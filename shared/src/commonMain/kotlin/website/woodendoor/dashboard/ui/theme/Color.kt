@@ -2,18 +2,43 @@ package website.woodendoor.dashboard.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Background & Surface
+// ==========================================
+// Material 3 Dark Palette & Surface Tokens
+// ==========================================
 val DarkBackground = Color(0xFF111216)
 val DarkSurface = Color(0xFF1A1B20)
 val DarkSurfaceElevated = Color(0xFF22242B)
 val DarkSurfaceHighlight = Color(0xFF2B2E38)
+
+val DarkSurfaceContainerLowest = Color(0xFF0A0C10)
+val DarkSurfaceContainerLow = Color(0xFF14151A)
+val DarkSurfaceContainer = Color(0xFF1A1B20)
+val DarkSurfaceContainerHigh = Color(0xFF22242B)
+val DarkSurfaceContainerHighest = Color(0xFF2B2E38)
 
 // Borders & Dividers
 val DarkBorder = Color(0xFF2D3039)
 val DarkBorderHover = Color(0xFF454957)
 val DarkDivider = Color(0xFF252730)
 
-// Status Colors
+// ==========================================
+// Material 3 Light Palette & Surface Tokens
+// ==========================================
+val LightBackground = Color(0xFFF8F9FA)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceElevated = Color(0xFFF1F3F5)
+val LightSurfaceContainerLowest = Color(0xFFFFFFFF)
+val LightSurfaceContainerLow = Color(0xFFF8F9FA)
+val LightSurfaceContainer = Color(0xFFEFF1F4)
+val LightSurfaceContainerHigh = Color(0xFFE6E8EC)
+val LightSurfaceContainerHighest = Color(0xFFDCE0E5)
+val LightBorder = Color(0xFFD1D5DB)
+val LightBorderHover = Color(0xFF9CA3AF)
+val LightDivider = Color(0xFFE5E7EB)
+
+// ==========================================
+// Semantic Status Colors
+// ==========================================
 val StatusHealthy = Color(0xFF10B981) // Emerald 500
 val StatusHealthyBg = Color(0xFF064E3B) // Emerald 900
 val StatusClosed = Color(0xFFF59E0B) // Amber 500
@@ -48,6 +73,6 @@ val ConsoleBackground = Color(0xFF0A0C10)
 val ConsoleGutter = Color(0xFF16181F)
 val ConsoleGutterText = Color(0xFF4B5563)
 val ConsoleText = Color(0xFFE5E7EB)
-val ConsoleHighlightBg = Color(0xFF854D0E) // Yellow-Brown highlight
+val ConsoleHighlightBg = Color(0xFF854D0E)
 val ConsoleHighlightText = Color(0xFFFEF08A)
 val ConsoleSelection = Color(0xFF1E3A8A)

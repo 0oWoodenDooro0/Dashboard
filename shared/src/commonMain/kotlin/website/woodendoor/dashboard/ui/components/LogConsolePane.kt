@@ -1,12 +1,12 @@
 package website.woodendoor.dashboard.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,14 +20,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -37,8 +36,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -48,21 +45,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.ui.theme.ConsoleBackground
-import website.woodendoor.dashboard.ui.theme.ConsoleGutter
-import website.woodendoor.dashboard.ui.theme.ConsoleGutterText
 import website.woodendoor.dashboard.ui.theme.ConsoleHighlightBg
 import website.woodendoor.dashboard.ui.theme.ConsoleHighlightText
-import website.woodendoor.dashboard.ui.theme.ConsoleText
-import website.woodendoor.dashboard.ui.theme.DarkBorder
-import website.woodendoor.dashboard.ui.theme.DarkSurface
-import website.woodendoor.dashboard.ui.theme.DarkSurfaceElevated
 import website.woodendoor.dashboard.ui.theme.MonospaceFontFamily
-import website.woodendoor.dashboard.ui.theme.PrimaryBlue
 import website.woodendoor.dashboard.ui.theme.StatusHealthy
-import website.woodendoor.dashboard.ui.theme.TextMuted
-import website.woodendoor.dashboard.ui.theme.TextPrimary
-import website.woodendoor.dashboard.ui.theme.TextSecondary
 import website.woodendoor.dashboard.ui.util.LogHighlightHelper
 
 @Composable
@@ -88,10 +74,8 @@ fun LogConsolePane(
     }
 
     Surface(
-        modifier = modifier
-            .fillMaxHeight()
-            .border(width = 1.dp, color = DarkBorder),
-        color = DarkSurface
+        modifier = modifier.fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -109,33 +93,34 @@ fun LogConsolePane(
                 onCopyLogs = onCopyLogs
             )
 
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
             // Terminal Console Body
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ConsoleBackground)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
                 if (selectedService == null) {
                     EmptyConsolePlaceholder(
-                        icon = "📡",
                         title = "No Service Selected",
                         subtitle = "Select a service from the left sidebar to stream live logs."
                     )
                 } else if (selectedService.logSource is LogSource.None) {
                     EmptyConsolePlaceholder(
-                        icon = "ℹ️",
                         title = "No Log Source Configured",
                         subtitle = "Edit '${selectedService.name}' and specify a Docker container or local file path to enable live log streaming."
                     )
                 } else if (logs.isEmpty()) {
                     EmptyConsolePlaceholder(
-                        icon = "⏳",
                         title = "Waiting for logs...",
                         subtitle = "Connected to ${describeLogSource(selectedService.logSource)}. Output will appear here."
                     )
                 } else if (filteredLogs.isEmpty() && searchQuery.isNotBlank()) {
                     EmptyConsolePlaceholder(
-                        icon = "🔍",
                         title = "No Matching Logs",
                         subtitle = "No lines match the search filter '$searchQuery'."
                     )
@@ -172,10 +157,8 @@ fun ConsoleControlBar(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(width = 1.dp, color = DarkBorder),
-        color = DarkSurfaceElevated
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Column(
             modifier = Modifier
@@ -200,30 +183,36 @@ fun ConsoleControlBar(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
                         ),
-                        color = TextSecondary
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (selectedService != null) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = DarkSurface,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
-                        ) {
-                            Text(
-                                text = selectedService.name,
-                                fontFamily = MonospaceFontFamily,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PrimaryBlue,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = selectedService.name,
+                                    fontFamily = MonospaceFontFamily,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                labelColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = SuggestionChipDefaults.suggestionChipBorder(
+                                enabled = true,
+                                borderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            shape = MaterialTheme.shapes.extraSmall
+                        )
 
                         Text(
                             text = describeLogSource(selectedService.logSource),
                             fontFamily = MonospaceFontFamily,
-                            fontSize = 11.sp,
-                            color = TextMuted
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -236,21 +225,27 @@ fun ConsoleControlBar(
                     // Copy Button
                     OutlinedButton(
                         onClick = onCopyLogs,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = MaterialTheme.shapes.extraSmall,
                         modifier = Modifier.height(30.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                     ) {
-                        Text("📋 Copy", fontSize = 11.sp, color = TextPrimary)
+                        Text(
+                            text = "Copy",
+                            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)
+                        )
                     }
 
                     // Clear Buffer Button
                     OutlinedButton(
                         onClick = onClearLogs,
-                        shape = RoundedCornerShape(6.dp),
+                        shape = MaterialTheme.shapes.extraSmall,
                         modifier = Modifier.height(30.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                     ) {
-                        Text("🧹 Clear", fontSize = 11.sp, color = TextPrimary)
+                        Text(
+                            text = "Clear",
+                            style = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)
+                        )
                     }
                 }
             }
@@ -265,26 +260,32 @@ fun ConsoleControlBar(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Filter logs (regex/text)...", fontSize = 11.sp, color = TextMuted) },
+                    placeholder = {
+                        Text(
+                            text = "Filter logs (regex/text)...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    },
                     singleLine = true,
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp),
-                    shape = RoundedCornerShape(6.dp),
+                        .height(42.dp),
+                    shape = MaterialTheme.shapes.extraSmall,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = DarkSurface,
-                        unfocusedContainerColor = DarkSurface,
-                        focusedBorderColor = PrimaryBlue,
-                        unfocusedBorderColor = DarkBorder,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                     ),
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             Text(
                                 text = "✕",
-                                color = TextMuted,
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier
                                     .clickable { onSearchQueryChange("") }
                                     .padding(horizontal = 6.dp)
@@ -296,20 +297,26 @@ fun ConsoleControlBar(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 // Line Counter Badge
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = DarkSurface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
-                ) {
-                    val countText = if (searchQuery.isBlank()) "$totalLines lines" else "$filteredLines / $totalLines lines"
-                    Text(
-                        text = countText,
-                        fontFamily = MonospaceFontFamily,
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                val countText = if (searchQuery.isBlank()) "$totalLines lines" else "$filteredLines / $totalLines lines"
+                SuggestionChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = countText,
+                            fontFamily = MonospaceFontFamily,
+                            fontSize = 11.sp
+                        )
+                    },
+                    colors = SuggestionChipDefaults.suggestionChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    border = SuggestionChipDefaults.suggestionChipBorder(
+                        enabled = true,
+                        borderColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    shape = MaterialTheme.shapes.extraSmall
+                )
 
                 Spacer(modifier = Modifier.width(12.dp))
 
@@ -320,17 +327,17 @@ fun ConsoleControlBar(
                 ) {
                     Text(
                         text = "Auto-Scroll",
-                        fontSize = 11.sp,
-                        color = if (isAutoScrollEnabled) StatusHealthy else TextMuted
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isAutoScrollEnabled) StatusHealthy else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Switch(
                         checked = isAutoScrollEnabled,
                         onCheckedChange = onToggleAutoScroll,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = StatusHealthy,
-                            checkedTrackColor = DarkSurface,
-                            uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = DarkSurface
+                            checkedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         ),
                         modifier = Modifier.height(24.dp)
                     )
@@ -352,7 +359,7 @@ fun LogLineItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(ConsoleBackground)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .padding(vertical = 1.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -362,11 +369,11 @@ fun LogLineItem(
             fontFamily = MonospaceFontFamily,
             fontSize = 11.sp,
             lineHeight = 16.sp,
-            color = ConsoleGutterText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             textAlign = TextAlign.End,
             modifier = Modifier
                 .width(44.dp)
-                .background(ConsoleGutter)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(horizontal = 6.dp)
         )
 
@@ -387,7 +394,7 @@ fun LogLineItem(
                 fontFamily = MonospaceFontFamily,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
-                color = ConsoleText
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -422,15 +429,14 @@ fun highlightLogLine(line: String, query: String): AnnotatedString {
 
 fun describeLogSource(source: LogSource): String {
     return when (source) {
-        is LogSource.Docker -> "Docker: ${source.containerName}"
-        is LogSource.LocalFile -> "File: ${source.path}"
+        is LogSource.Docker -> "docker: ${source.containerName}"
+        is LogSource.LocalFile -> "file: ${source.path}"
         LogSource.None -> "No Log Source"
     }
 }
 
 @Composable
 fun EmptyConsolePlaceholder(
-    icon: String,
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier
@@ -443,18 +449,17 @@ fun EmptyConsolePlaceholder(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(text = icon, fontSize = 32.sp)
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = TextPrimary
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
         }

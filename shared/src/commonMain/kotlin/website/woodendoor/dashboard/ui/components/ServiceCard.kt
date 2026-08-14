@@ -1,13 +1,14 @@
 package website.woodendoor.dashboard.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,21 +17,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,14 +42,7 @@ import website.woodendoor.dashboard.ui.theme.ContainerExited
 import website.woodendoor.dashboard.ui.theme.ContainerPaused
 import website.woodendoor.dashboard.ui.theme.ContainerRestarting
 import website.woodendoor.dashboard.ui.theme.ContainerRunning
-import website.woodendoor.dashboard.ui.theme.DarkBorder
-import website.woodendoor.dashboard.ui.theme.DarkBorderHover
-import website.woodendoor.dashboard.ui.theme.DarkSurface
-import website.woodendoor.dashboard.ui.theme.DarkSurfaceElevated
-import website.woodendoor.dashboard.ui.theme.DarkSurfaceHighlight
 import website.woodendoor.dashboard.ui.theme.MonospaceFontFamily
-import website.woodendoor.dashboard.ui.theme.PrimaryBlue
-import website.woodendoor.dashboard.ui.theme.PrimaryBlueBg
 import website.woodendoor.dashboard.ui.theme.StatusClosed
 import website.woodendoor.dashboard.ui.theme.StatusClosedBg
 import website.woodendoor.dashboard.ui.theme.StatusHealthy
@@ -59,9 +51,6 @@ import website.woodendoor.dashboard.ui.theme.StatusNeutral
 import website.woodendoor.dashboard.ui.theme.StatusNeutralBg
 import website.woodendoor.dashboard.ui.theme.StatusUnreachable
 import website.woodendoor.dashboard.ui.theme.StatusUnreachableBg
-import website.woodendoor.dashboard.ui.theme.TextMuted
-import website.woodendoor.dashboard.ui.theme.TextPrimary
-import website.woodendoor.dashboard.ui.theme.TextSecondary
 import website.woodendoor.dashboard.ui.util.ContainerStatusType
 import website.woodendoor.dashboard.ui.util.PortStatusType
 import website.woodendoor.dashboard.ui.util.UiHelpers
@@ -87,23 +76,27 @@ fun ServiceCard(
         PortStatusType.NO_PORT -> Pair(StatusNeutral, StatusNeutralBg)
     }
 
-    val cardBorderColor = if (isSelected) PrimaryBlue else DarkBorder
-    val cardBgColor = if (isSelected) DarkSurfaceHighlight else DarkSurfaceElevated
+    val cardBorder = if (isSelected) {
+        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+    } else {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    }
 
-    Card(
+    val cardBgColor = if (isSelected) {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+
+    OutlinedCard(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                color = cardBorderColor,
-                shape = RoundedCornerShape(10.dp)
-            )
             .clickable { onSelect() },
-        colors = CardDefaults.cardColors(
+        shape = MaterialTheme.shapes.medium,
+        border = cardBorder,
+        colors = CardDefaults.outlinedCardColors(
             containerColor = cardBgColor
-        ),
-        shape = RoundedCornerShape(10.dp)
+        )
     ) {
         Column(
             modifier = Modifier
@@ -135,49 +128,61 @@ fun ServiceCard(
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Port & Latency Chip
+                // Port & Latency Badges
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (service.port != null) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = DarkSurface,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
-                        ) {
-                            Text(
-                                text = ":${service.port}",
-                                fontFamily = MonospaceFontFamily,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = PrimaryBlue,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    text = ":${service.port}",
+                                    fontFamily = MonospaceFontFamily,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                labelColor = MaterialTheme.colorScheme.primary
+                            ),
+                            border = SuggestionChipDefaults.suggestionChipBorder(
+                                enabled = true,
+                                borderColor = MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            shape = MaterialTheme.shapes.extraSmall
+                        )
                     }
 
                     // Health / Latency badge
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = statusBgColor.copy(alpha = 0.5f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, statusDotColor.copy(alpha = 0.4f))
-                    ) {
-                        Text(
-                            text = portHealthInfo.label,
-                            fontFamily = MonospaceFontFamily,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = statusDotColor,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        )
-                    }
+                    SuggestionChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                text = portHealthInfo.label,
+                                fontFamily = MonospaceFontFamily,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = statusBgColor.copy(alpha = 0.5f),
+                            labelColor = statusDotColor
+                        ),
+                        border = SuggestionChipDefaults.suggestionChipBorder(
+                            enabled = true,
+                            borderColor = statusDotColor.copy(alpha = 0.4f)
+                        ),
+                        shape = MaterialTheme.shapes.extraSmall
+                    )
                 }
             }
 
@@ -187,7 +192,7 @@ fun ServiceCard(
                 Text(
                     text = service.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -207,12 +212,12 @@ fun ServiceCard(
                     val (stateColor, stateBg) = when (containerInfo.statusType) {
                         ContainerStatusType.RUNNING -> Pair(ContainerRunning, StatusHealthyBg)
                         ContainerStatusType.PAUSED -> Pair(ContainerPaused, StatusClosedBg)
-                        ContainerStatusType.RESTARTING -> Pair(ContainerRestarting, DarkSurface)
+                        ContainerStatusType.RESTARTING -> Pair(ContainerRestarting, MaterialTheme.colorScheme.surfaceContainerHigh)
                         ContainerStatusType.EXITED, ContainerStatusType.DEAD -> Pair(ContainerExited, StatusUnreachableBg)
                         ContainerStatusType.NOT_FOUND, ContainerStatusType.UNKNOWN -> Pair(StatusNeutral, StatusNeutralBg)
                     }
                     SmallChip(
-                        text = "🐳 ${containerInfo.label}",
+                        text = containerInfo.label,
                         color = stateColor,
                         bgColor = stateBg.copy(alpha = 0.5f)
                     )
@@ -222,17 +227,17 @@ fun ServiceCard(
                 when (val src = service.logSource) {
                     is LogSource.Docker -> {
                         SmallChip(
-                            text = "src: ${src.containerName}",
-                            color = TextSecondary,
-                            bgColor = DarkSurface
+                            text = "docker: ${src.containerName}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                     }
                     is LogSource.LocalFile -> {
                         val fileName = src.path.substringAfterLast("/")
                         SmallChip(
-                            text = "📄 $fileName",
-                            color = TextSecondary,
-                            bgColor = DarkSurface
+                            text = "file: $fileName",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                     }
                     LogSource.None -> {}
@@ -241,9 +246,9 @@ fun ServiceCard(
                 // Tags
                 for (tag in service.tags) {
                     SmallChip(
-                        text = "#$tag",
-                        color = TextMuted,
-                        bgColor = DarkSurface.copy(alpha = 0.7f)
+                        text = tag,
+                        color = MaterialTheme.colorScheme.outline,
+                        bgColor = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.6f)
                     )
                 }
             }
@@ -261,14 +266,16 @@ fun ServiceCard(
                 if (!targetUrl.isNullOrBlank()) {
                     OutlinedButton(
                         onClick = { onOpenUrl(targetUrl) },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = MaterialTheme.shapes.extraSmall,
                         modifier = Modifier.height(28.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "🌐 Open",
-                            fontSize = 11.sp,
-                            color = PrimaryBlue
+                            text = "Open",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         )
                     }
                 } else {
@@ -280,33 +287,33 @@ fun ServiceCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Edit
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onEdit() }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = DarkSurface
+                    // Edit Button
+                    TextButton(
+                        onClick = onEdit,
+                        shape = MaterialTheme.shapes.extraSmall,
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "✏️ Edit",
-                            fontSize = 11.sp,
-                            color = TextSecondary
+                            text = "Edit",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         )
                     }
 
-                    // Delete
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onDelete() }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = DarkSurface
+                    // Delete Button
+                    TextButton(
+                        onClick = onDelete,
+                        shape = MaterialTheme.shapes.extraSmall,
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "🗑️",
-                            fontSize = 11.sp,
-                            color = StatusUnreachable
+                            text = "Delete",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = MaterialTheme.colorScheme.error
+                            )
                         )
                     }
                 }
@@ -322,19 +329,25 @@ fun SmallChip(
     bgColor: Color,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(4.dp),
-        color = bgColor,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, color.copy(alpha = 0.3f))
-    ) {
-        Text(
-            text = text,
-            fontSize = 10.sp,
-            fontFamily = MonospaceFontFamily,
-            fontWeight = FontWeight.Medium,
-            color = color,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-        )
-    }
+    SuggestionChip(
+        onClick = {},
+        label = {
+            Text(
+                text = text,
+                fontFamily = MonospaceFontFamily,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+        },
+        colors = SuggestionChipDefaults.suggestionChipColors(
+            containerColor = bgColor,
+            labelColor = color
+        ),
+        border = SuggestionChipDefaults.suggestionChipBorder(
+            enabled = true,
+            borderColor = color.copy(alpha = 0.3f)
+        ),
+        shape = MaterialTheme.shapes.extraSmall,
+        modifier = modifier
+    )
 }

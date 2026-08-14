@@ -1,8 +1,5 @@
 package website.woodendoor.dashboard.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,19 +11,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,14 +39,6 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
-import website.woodendoor.dashboard.ui.theme.DarkBackground
-import website.woodendoor.dashboard.ui.theme.DarkBorder
-import website.woodendoor.dashboard.ui.theme.DarkSurface
-import website.woodendoor.dashboard.ui.theme.DarkSurfaceElevated
-import website.woodendoor.dashboard.ui.theme.PrimaryBlue
-import website.woodendoor.dashboard.ui.theme.TextMuted
-import website.woodendoor.dashboard.ui.theme.TextPrimary
-import website.woodendoor.dashboard.ui.theme.TextSecondary
 
 @Composable
 fun ServiceListPane(
@@ -91,10 +79,8 @@ fun ServiceListPane(
     val totalServices = groups.sumOf { it.services.size }
 
     Surface(
-        modifier = modifier
-            .fillMaxHeight()
-            .border(width = 1.dp, color = DarkBorder),
-        color = DarkBackground
+        modifier = modifier.fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier
@@ -113,21 +99,27 @@ fun ServiceListPane(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     ),
-                    color = TextSecondary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = DarkSurfaceElevated,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
-                ) {
-                    Text(
-                        text = "$totalServices total",
-                        fontSize = 11.sp,
-                        color = TextMuted,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
+                SuggestionChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = "$totalServices total",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    },
+                    colors = SuggestionChipDefaults.suggestionChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    border = SuggestionChipDefaults.suggestionChipBorder(
+                        enabled = true,
+                        borderColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    shape = MaterialTheme.shapes.extraSmall
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -136,19 +128,25 @@ fun ServiceListPane(
             OutlinedTextField(
                 value = searchFilter,
                 onValueChange = { searchFilter = it },
-                placeholder = { Text("Filter services...", fontSize = 12.sp, color = TextMuted) },
+                placeholder = {
+                    Text(
+                        text = "Filter services...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp),
-                shape = RoundedCornerShape(8.dp),
+                    .height(48.dp),
+                shape = MaterialTheme.shapes.small,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = DarkSurface,
-                    unfocusedContainerColor = DarkSurface,
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = DarkBorder,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                 )
             )
 
@@ -169,15 +167,24 @@ fun ServiceListPane(
                         Text(
                             text = if (searchFilter.isBlank()) "No services configured" else "No matching services",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (searchFilter.isBlank()) {
                             Button(
                                 onClick = { onAddServiceToGroup(null) },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                                shape = MaterialTheme.shapes.small,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             ) {
-                                Text("+ Add First Service", fontSize = 12.sp)
+                                Text(
+                                    text = "Add Service",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                )
                             }
                         }
                     }
@@ -185,7 +192,7 @@ fun ServiceListPane(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
                     filteredGroups.forEach { group ->
@@ -212,7 +219,7 @@ fun ServiceListPane(
                                 onEdit = { onEditService(service, group.name) },
                                 onDelete = { onDeleteService(service) },
                                 onOpenUrl = onOpenUrl,
-                                modifier = Modifier.padding(bottom = 6.dp)
+                                modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }
                     }
@@ -229,55 +236,66 @@ fun GroupHeader(
     onAddClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = groupName.uppercase(),
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp
-                ),
-                color = TextSecondary
-            )
-
-            Surface(
-                shape = CircleShape,
-                color = DarkSurfaceElevated
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = count.toString(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextMuted,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                    text = groupName.uppercase(),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SuggestionChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = count.toString(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    },
+                    colors = SuggestionChipDefaults.suggestionChipColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    border = null,
+                    shape = MaterialTheme.shapes.extraSmall
+                )
+            }
+
+            TextButton(
+                onClick = onAddClick,
+                shape = MaterialTheme.shapes.extraSmall,
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                modifier = Modifier.height(26.dp)
+            ) {
+                Text(
+                    text = "Add",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 )
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(4.dp),
-            color = DarkSurface,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, DarkBorder),
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { onAddClick() }
-        ) {
-            Text(
-                text = "+ Add",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = PrimaryBlue,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-        }
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
     }
 }
