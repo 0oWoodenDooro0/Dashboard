@@ -1,0 +1,462 @@
+package website.woodendoor.dashboard.ui.components
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import website.woodendoor.dashboard.model.LogSource
+import website.woodendoor.dashboard.model.ServiceItem
+import website.woodendoor.dashboard.ui.theme.ConsoleBackground
+import website.woodendoor.dashboard.ui.theme.ConsoleGutter
+import website.woodendoor.dashboard.ui.theme.ConsoleGutterText
+import website.woodendoor.dashboard.ui.theme.ConsoleHighlightBg
+import website.woodendoor.dashboard.ui.theme.ConsoleHighlightText
+import website.woodendoor.dashboard.ui.theme.ConsoleText
+import website.woodendoor.dashboard.ui.theme.DarkBorder
+import website.woodendoor.dashboard.ui.theme.DarkSurface
+import website.woodendoor.dashboard.ui.theme.DarkSurfaceElevated
+import website.woodendoor.dashboard.ui.theme.MonospaceFontFamily
+import website.woodendoor.dashboard.ui.theme.PrimaryBlue
+import website.woodendoor.dashboard.ui.theme.StatusHealthy
+import website.woodendoor.dashboard.ui.theme.TextMuted
+import website.woodendoor.dashboard.ui.theme.TextPrimary
+import website.woodendoor.dashboard.ui.theme.TextSecondary
+import website.woodendoor.dashboard.ui.util.LogHighlightHelper
+
+@Composable
+fun LogConsolePane(
+    selectedService: ServiceItem?,
+    logs: List<String>,
+    filteredLogs: List<String>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    isAutoScrollEnabled: Boolean,
+    onToggleAutoScroll: (Boolean) -> Unit,
+    onClearLogs: () -> Unit,
+    onCopyLogs: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+
+    // Auto-scroll to bottom whenever new filtered logs arrive
+    LaunchedEffect(filteredLogs.size, isAutoScrollEnabled) {
+        if (isAutoScrollEnabled && filteredLogs.isNotEmpty()) {
+            listState.scrollToItem(filteredLogs.size - 1)
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxHeight()
+            .border(width = 1.dp, color = DarkBorder),
+        color = DarkSurface
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Top Console Control Bar
+            ConsoleControlBar(
+                selectedService = selectedService,
+                totalLines = logs.size,
+                filteredLines = filteredLogs.size,
+                searchQuery = searchQuery,
+                onSearchQueryChange = onSearchQueryChange,
+                isAutoScrollEnabled = isAutoScrollEnabled,
+                onToggleAutoScroll = onToggleAutoScroll,
+                onClearLogs = onClearLogs,
+                onCopyLogs = onCopyLogs
+            )
+
+            // Terminal Console Body
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ConsoleBackground)
+            ) {
+                if (selectedService == null) {
+                    EmptyConsolePlaceholder(
+                        icon = "📡",
+                        title = "No Service Selected",
+                        subtitle = "Select a service from the left sidebar to stream live logs."
+                    )
+                } else if (selectedService.logSource is LogSource.None) {
+                    EmptyConsolePlaceholder(
+                        icon = "ℹ️",
+                        title = "No Log Source Configured",
+                        subtitle = "Edit '${selectedService.name}' and specify a Docker container or local file path to enable live log streaming."
+                    )
+                } else if (logs.isEmpty()) {
+                    EmptyConsolePlaceholder(
+                        icon = "⏳",
+                        title = "Waiting for logs...",
+                        subtitle = "Connected to ${describeLogSource(selectedService.logSource)}. Output will appear here."
+                    )
+                } else if (filteredLogs.isEmpty() && searchQuery.isNotBlank()) {
+                    EmptyConsolePlaceholder(
+                        icon = "🔍",
+                        title = "No Matching Logs",
+                        subtitle = "No lines match the search filter '$searchQuery'."
+                    )
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(filteredLogs) { index, logLine ->
+                            LogLineItem(
+                                lineNumber = index + 1,
+                                lineContent = logLine,
+                                searchQuery = searchQuery
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConsoleControlBar(
+    selectedService: ServiceItem?,
+    totalLines: Int,
+    filteredLines: Int,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    isAutoScrollEnabled: Boolean,
+    onToggleAutoScroll: (Boolean) -> Unit,
+    onClearLogs: () -> Unit,
+    onCopyLogs: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(width = 1.dp, color = DarkBorder),
+        color = DarkSurfaceElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Row 1: Active Service & Source Info + Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left: Selected Service Details
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "TERMINAL",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        ),
+                        color = TextSecondary
+                    )
+
+                    if (selectedService != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = DarkSurface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
+                        ) {
+                            Text(
+                                text = selectedService.name,
+                                fontFamily = MonospaceFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = PrimaryBlue,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Text(
+                            text = describeLogSource(selectedService.logSource),
+                            fontFamily = MonospaceFontFamily,
+                            fontSize = 11.sp,
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                // Right: Action buttons (Copy, Clear)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Copy Button
+                    OutlinedButton(
+                        onClick = onCopyLogs,
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(30.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("📋 Copy", fontSize = 11.sp, color = TextPrimary)
+                    }
+
+                    // Clear Buffer Button
+                    OutlinedButton(
+                        onClick = onClearLogs,
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(30.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text("🧹 Clear", fontSize = 11.sp, color = TextPrimary)
+                    }
+                }
+            }
+
+            // Row 2: Search Box & Auto-Scroll Toggle & Counter
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Search Input Field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    placeholder = { Text("Filter logs (regex/text)...", fontSize = 11.sp, color = TextMuted) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = DarkSurface,
+                        unfocusedContainerColor = DarkSurface,
+                        focusedBorderColor = PrimaryBlue,
+                        unfocusedBorderColor = DarkBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            Text(
+                                text = "✕",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier
+                                    .clickable { onSearchQueryChange("") }
+                                    .padding(horizontal = 6.dp)
+                            )
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Line Counter Badge
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = DarkSurface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
+                ) {
+                    val countText = if (searchQuery.isBlank()) "$totalLines lines" else "$filteredLines / $totalLines lines"
+                    Text(
+                        text = countText,
+                        fontFamily = MonospaceFontFamily,
+                        fontSize = 11.sp,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Auto Scroll Toggle
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Auto-Scroll",
+                        fontSize = 11.sp,
+                        color = if (isAutoScrollEnabled) StatusHealthy else TextMuted
+                    )
+                    Switch(
+                        checked = isAutoScrollEnabled,
+                        onCheckedChange = onToggleAutoScroll,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = StatusHealthy,
+                            checkedTrackColor = DarkSurface,
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = DarkSurface
+                        ),
+                        modifier = Modifier.height(24.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LogLineItem(
+    lineNumber: Int,
+    lineContent: String,
+    searchQuery: String,
+    modifier: Modifier = Modifier
+) {
+    val horizontalScroll = rememberScrollState()
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(ConsoleBackground)
+            .padding(vertical = 1.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        // Line number gutter
+        Text(
+            text = lineNumber.toString(),
+            fontFamily = MonospaceFontFamily,
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            color = ConsoleGutterText,
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .width(44.dp)
+                .background(ConsoleGutter)
+                .padding(horizontal = 6.dp)
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Log content with highlight
+        val annotatedText = remember(lineContent, searchQuery) {
+            highlightLogLine(lineContent, searchQuery)
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(horizontalScroll)
+        ) {
+            Text(
+                text = annotatedText,
+                fontFamily = MonospaceFontFamily,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = ConsoleText
+            )
+        }
+    }
+}
+
+fun highlightLogLine(line: String, query: String): AnnotatedString {
+    val ranges = LogHighlightHelper.findHighlightRanges(line, query)
+    if (ranges.isEmpty()) {
+        return AnnotatedString(line)
+    }
+
+    return buildAnnotatedString {
+        var lastIndex = 0
+        for (range in ranges) {
+            if (range.start > lastIndex) {
+                append(line.substring(lastIndex, range.start))
+            }
+            val matchText = line.substring(range.start, range.end)
+            val spanStyle = SpanStyle(
+                background = ConsoleHighlightBg,
+                color = ConsoleHighlightText,
+                fontWeight = FontWeight.Bold
+            )
+            append(AnnotatedString(matchText, spanStyle))
+            lastIndex = range.end
+        }
+        if (lastIndex < line.length) {
+            append(line.substring(lastIndex))
+        }
+    }
+}
+
+fun describeLogSource(source: LogSource): String {
+    return when (source) {
+        is LogSource.Docker -> "Docker: ${source.containerName}"
+        is LogSource.LocalFile -> "File: ${source.path}"
+        LogSource.None -> "No Log Source"
+    }
+}
+
+@Composable
+fun EmptyConsolePlaceholder(
+    icon: String,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = icon, fontSize = 32.sp)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = TextPrimary
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
