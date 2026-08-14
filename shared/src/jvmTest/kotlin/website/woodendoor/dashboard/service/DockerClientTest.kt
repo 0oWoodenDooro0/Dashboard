@@ -417,4 +417,86 @@ class DockerClientTest {
         assertTrue(infoWithoutNames.state.isExited)
         assertFalse(infoWithoutNames.state.isRunning)
     }
+
+    @Test
+    fun startContainer_callsDockerStartWithContainerName() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(listOf("docker", "start", "redis-db"), cmd)
+                ProcessResult(exitCode = 0, stdout = "redis-db\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.startContainer("redis-db")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun startContainer_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Error response from daemon: container not found")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.startContainer("nonexistent")
+        }
+        assertTrue(exception.message?.contains("container not found") == true)
+    }
+
+    @Test
+    fun stopContainer_callsDockerStopWithTimeout() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(listOf("docker", "stop", "redis-db"), cmd)
+                ProcessResult(exitCode = 0, stdout = "redis-db\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.stopContainer("redis-db")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun stopContainer_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Error response from daemon: cannot stop container")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.stopContainer("redis-db")
+        }
+        assertTrue(exception.message?.contains("cannot stop container") == true)
+    }
+
+    @Test
+    fun restartContainer_callsDockerRestartWithTimeout() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(listOf("docker", "restart", "redis-db"), cmd)
+                ProcessResult(exitCode = 0, stdout = "redis-db\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.restartContainer("redis-db")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun restartContainer_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Error response from daemon: cannot restart container")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.restartContainer("redis-db")
+        }
+        assertTrue(exception.message?.contains("cannot restart container") == true)
+    }
 }
+

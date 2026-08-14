@@ -17,7 +17,8 @@ data class DashboardUiState(
     val errorMessage: String? = null,
     val logs: List<String> = emptyList(),
     val logSearchQuery: String = "",
-    val isAutoScrollEnabled: Boolean = true
+    val isAutoScrollEnabled: Boolean = true,
+    val operatingServiceIds: Set<String> = emptySet()
 ) {
     /**
      * Flattened list of all configured services across all groups.

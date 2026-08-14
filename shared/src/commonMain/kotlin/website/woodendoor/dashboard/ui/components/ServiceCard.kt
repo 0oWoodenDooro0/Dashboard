@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
@@ -66,6 +67,7 @@ fun ServiceCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    isOperating: Boolean = false,
     onStart: (() -> Unit)? = null,
     onStop: (() -> Unit)? = null,
     onRestart: (() -> Unit)? = null,
@@ -306,55 +308,83 @@ fun ServiceCard(
                         service.logSource is LogSource.DockerCompose
 
                     if (isControlSupported) {
-                        val isRunning = containerState is ContainerState.Running
-                        if (isRunning) {
-                            if (onRestart != null) {
-                                OutlinedButton(
-                                    onClick = onRestart,
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    modifier = Modifier.height(28.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        if (isOperating) {
+                            OutlinedButton(
+                                onClick = {},
+                                enabled = false,
+                                shape = MaterialTheme.shapes.extraSmall,
+                                modifier = Modifier.height(28.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Text(
-                                        text = "Restart",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
-                                }
-                            }
-                            if (onStop != null) {
-                                OutlinedButton(
-                                    onClick = onStop,
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    modifier = Modifier.height(28.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
                                     Text(
-                                        text = "Stop",
+                                        text = "Wait...",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.error
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     )
                                 }
                             }
                         } else {
-                            if (onStart != null) {
-                                OutlinedButton(
-                                    onClick = onStart,
-                                    shape = MaterialTheme.shapes.extraSmall,
-                                    modifier = Modifier.height(28.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Start",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
+                            val isRunning = containerState is ContainerState.Running
+                            if (isRunning) {
+                                if (onRestart != null) {
+                                    OutlinedButton(
+                                        onClick = onRestart,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        modifier = Modifier.height(28.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "Restart",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
                                         )
-                                    )
+                                    }
+                                }
+                                if (onStop != null) {
+                                    OutlinedButton(
+                                        onClick = onStop,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        modifier = Modifier.height(28.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "Stop",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        )
+                                    }
+                                }
+                            } else {
+                                if (onStart != null) {
+                                    OutlinedButton(
+                                        onClick = onStart,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                        modifier = Modifier.height(28.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "Start",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }
