@@ -6,6 +6,7 @@ import website.woodendoor.dashboard.model.ServiceItem
 enum class LogSourceType(val displayName: String) {
     NONE("None"),
     DOCKER("Docker Container"),
+    DOCKER_COMPOSE("Docker Compose"),
     LOCAL_FILE("Local File")
 }
 
@@ -21,30 +22,68 @@ data class ServiceFormState(
     val tags: String = "",
     val logSourceType: LogSourceType = LogSourceType.NONE,
     val dockerContainerName: String = "",
-    val localFilePath: String = ""
+    val localFilePath: String = "",
+    val composeProjectDir: String = "",
+    val composeServiceName: String = "",
+    val composeFileName: String = ""
 ) {
     companion object {
         fun fromServiceItem(item: ServiceItem, groupName: String = "Default"): ServiceFormState {
-            val (sourceType, containerName, filePath) = when (val src = item.logSource) {
-                is LogSource.Docker -> Triple(LogSourceType.DOCKER, src.containerName, "")
-                is LogSource.LocalFile -> Triple(LogSourceType.LOCAL_FILE, "", src.path)
-                LogSource.None -> Triple(LogSourceType.NONE, "", "")
+            return when (val src = item.logSource) {
+                is LogSource.Docker -> ServiceFormState(
+                    id = item.id,
+                    name = item.name,
+                    groupName = groupName,
+                    host = item.host,
+                    port = item.port?.toString() ?: "",
+                    openUrl = item.openUrl ?: "",
+                    healthUrl = item.healthUrl ?: "",
+                    description = item.description ?: "",
+                    tags = item.tags.joinToString(", "),
+                    logSourceType = LogSourceType.DOCKER,
+                    dockerContainerName = src.containerName
+                )
+                is LogSource.DockerCompose -> ServiceFormState(
+                    id = item.id,
+                    name = item.name,
+                    groupName = groupName,
+                    host = item.host,
+                    port = item.port?.toString() ?: "",
+                    openUrl = item.openUrl ?: "",
+                    healthUrl = item.healthUrl ?: "",
+                    description = item.description ?: "",
+                    tags = item.tags.joinToString(", "),
+                    logSourceType = LogSourceType.DOCKER_COMPOSE,
+                    composeProjectDir = src.projectDir,
+                    composeServiceName = src.serviceName,
+                    composeFileName = src.composeFile ?: ""
+                )
+                is LogSource.LocalFile -> ServiceFormState(
+                    id = item.id,
+                    name = item.name,
+                    groupName = groupName,
+                    host = item.host,
+                    port = item.port?.toString() ?: "",
+                    openUrl = item.openUrl ?: "",
+                    healthUrl = item.healthUrl ?: "",
+                    description = item.description ?: "",
+                    tags = item.tags.joinToString(", "),
+                    logSourceType = LogSourceType.LOCAL_FILE,
+                    localFilePath = src.path
+                )
+                LogSource.None -> ServiceFormState(
+                    id = item.id,
+                    name = item.name,
+                    groupName = groupName,
+                    host = item.host,
+                    port = item.port?.toString() ?: "",
+                    openUrl = item.openUrl ?: "",
+                    healthUrl = item.healthUrl ?: "",
+                    description = item.description ?: "",
+                    tags = item.tags.joinToString(", "),
+                    logSourceType = LogSourceType.NONE
+                )
             }
-
-            return ServiceFormState(
-                id = item.id,
-                name = item.name,
-                groupName = groupName,
-                host = item.host,
-                port = item.port?.toString() ?: "",
-                openUrl = item.openUrl ?: "",
-                healthUrl = item.healthUrl ?: "",
-                description = item.description ?: "",
-                tags = item.tags.joinToString(", "),
-                logSourceType = sourceType,
-                dockerContainerName = containerName,
-                localFilePath = filePath
-            )
         }
     }
 }
@@ -84,6 +123,28 @@ object ServiceFormValidator {
                     LogSource.None
                 } else {
                     LogSource.Docker(containerName)
+                }
+            }
+            LogSourceType.DOCKER_COMPOSE -> {
+                val projectDir = state.composeProjectDir.trim()
+                val serviceName = state.composeServiceName.trim()
+                val composeFile = state.composeFileName.trim().ifEmpty { null }
+
+                if (projectDir.isEmpty()) {
+                    errors["composeProjectDir"] = "Project folder/directory cannot be empty for Docker Compose log source"
+                }
+                if (serviceName.isEmpty()) {
+                    errors["composeServiceName"] = "Service name cannot be empty for Docker Compose log source"
+                }
+
+                if (projectDir.isNotEmpty() && serviceName.isNotEmpty()) {
+                    LogSource.DockerCompose(
+                        projectDir = projectDir,
+                        serviceName = serviceName,
+                        composeFile = composeFile
+                    )
+                } else {
+                    LogSource.None
                 }
             }
             LogSourceType.LOCAL_FILE -> {

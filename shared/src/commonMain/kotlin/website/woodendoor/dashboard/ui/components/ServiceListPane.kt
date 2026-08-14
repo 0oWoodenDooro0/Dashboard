@@ -39,6 +39,7 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.stateKey
 
 @Composable
 fun ServiceListPane(
@@ -136,9 +137,8 @@ fun ServiceListPane(
                     )
                 },
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.small,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -207,6 +207,7 @@ fun ServiceListPane(
                         items(group.services, key = { it.id }) { service ->
                             val containerState = when (val src = service.logSource) {
                                 is LogSource.Docker -> containerStates[src.containerName]
+                                is LogSource.DockerCompose -> containerStates[src.stateKey()]
                                 else -> null
                             }
 

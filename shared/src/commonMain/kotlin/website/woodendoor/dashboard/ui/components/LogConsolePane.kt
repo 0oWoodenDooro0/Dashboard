@@ -268,9 +268,8 @@ fun ConsoleControlBar(
                         )
                     },
                     singleLine = true,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(42.dp),
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.extraSmall,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -430,6 +429,7 @@ fun highlightLogLine(line: String, query: String): AnnotatedString {
 fun describeLogSource(source: LogSource): String {
     return when (source) {
         is LogSource.Docker -> "docker: ${source.containerName}"
+        is LogSource.DockerCompose -> "compose: ${source.serviceName} (${source.projectDir})"
         is LogSource.LocalFile -> "file: ${source.path}"
         LogSource.None -> "No Log Source"
     }

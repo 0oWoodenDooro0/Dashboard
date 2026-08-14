@@ -5,6 +5,7 @@ import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.stateKey
 
 data class DashboardUiState(
     val config: DashboardConfig = DashboardConfig(),
@@ -37,11 +38,12 @@ data class DashboardUiState(
         get() = selectedServiceId?.let { serviceStatuses[it] }
 
     /**
-     * Docker container state of the currently selected service (if its log source is Docker).
+     * Docker container state of the currently selected service (if its log source is Docker or Docker Compose).
      */
     val selectedServiceContainerState: ContainerState?
         get() = when (val source = selectedService?.logSource) {
             is LogSource.Docker -> containerStates[source.containerName]
+            is LogSource.DockerCompose -> containerStates[source.stateKey()]
             else -> null
         }
 

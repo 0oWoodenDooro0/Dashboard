@@ -232,6 +232,13 @@ fun ServiceCard(
                             bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                     }
+                    is LogSource.DockerCompose -> {
+                        SmallChip(
+                            text = "compose: ${src.serviceName}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    }
                     is LogSource.LocalFile -> {
                         val fileName = src.path.substringAfterLast("/")
                         SmallChip(

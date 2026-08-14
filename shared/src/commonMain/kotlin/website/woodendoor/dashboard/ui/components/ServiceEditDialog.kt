@@ -3,10 +3,10 @@ package website.woodendoor.dashboard.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -37,6 +37,7 @@ import website.woodendoor.dashboard.ui.util.LogSourceType
 import website.woodendoor.dashboard.ui.util.ServiceFormState
 import website.woodendoor.dashboard.ui.util.ServiceFormValidator
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ServiceEditDialog(
     initialService: ServiceItem?,
@@ -155,9 +156,9 @@ fun ServiceEditDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         LogSourceType.entries.forEach { type ->
                             Row(
@@ -192,6 +193,30 @@ fun ServiceEditDialog(
                                 onValueChange = { formState = formState.copy(dockerContainerName = it) },
                                 placeholder = "e.g. backend-api",
                                 errorMessage = errors["dockerContainerName"]
+                            )
+                        }
+                        LogSourceType.DOCKER_COMPOSE -> {
+                            FormField(
+                                label = "Project Folder / Directory *",
+                                value = formState.composeProjectDir,
+                                onValueChange = { formState = formState.copy(composeProjectDir = it) },
+                                placeholder = "e.g. /home/user/my-project or ./backend",
+                                errorMessage = errors["composeProjectDir"]
+                            )
+
+                            FormField(
+                                label = "Compose Service Name *",
+                                value = formState.composeServiceName,
+                                onValueChange = { formState = formState.copy(composeServiceName = it) },
+                                placeholder = "e.g. backend, web, api",
+                                errorMessage = errors["composeServiceName"]
+                            )
+
+                            FormField(
+                                label = "Custom Compose File (Optional)",
+                                value = formState.composeFileName,
+                                onValueChange = { formState = formState.copy(composeFileName = it) },
+                                placeholder = "e.g. docker-compose.prod.yml (optional)"
                             )
                         }
                         LogSourceType.LOCAL_FILE -> {

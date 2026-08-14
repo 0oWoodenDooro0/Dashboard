@@ -31,6 +31,7 @@ class LogStreamServiceTest {
 
     private lateinit var tempDir: File
     private lateinit var fakeDockerClient: FakeDockerClient
+    private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var logStreamService: DefaultLogStreamService
 
     private class FakeDockerClient : DockerClient {
@@ -52,12 +53,37 @@ class LogStreamServiceTest {
         }
     }
 
+    private class FakeDockerComposeClient : DockerComposeClient {
+        var lastRequestedProjectDir: String? = null
+        var lastRequestedServiceName: String? = null
+        var lastRequestedComposeFile: String? = null
+        var lastRequestedTail: Int? = null
+        var customLogFlow: Flow<String> = flowOf("compose line 1", "compose line 2")
+
+        override suspend fun isComposeAvailable(): Boolean = true
+
+        override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState =
+            ContainerState.Running(status = "running")
+
+        override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
+
+        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> {
+            lastRequestedProjectDir = projectDir
+            lastRequestedServiceName = serviceName
+            lastRequestedComposeFile = composeFile
+            lastRequestedTail = tail
+            return customLogFlow
+        }
+    }
+
     @BeforeTest
     fun setUp() {
         tempDir = Files.createTempDirectory("log-stream-test").toFile()
         fakeDockerClient = FakeDockerClient()
+        fakeDockerComposeClient = FakeDockerComposeClient()
         logStreamService = DefaultLogStreamService(
             dockerClient = fakeDockerClient,
+            dockerComposeClient = fakeDockerComposeClient,
             pollDelayMs = 20L
         )
     }
@@ -80,6 +106,48 @@ class LogStreamServiceTest {
         assertEquals("web-backend", fakeDockerClient.lastRequestedContainer)
         assertEquals(50, fakeDockerClient.lastRequestedTail)
         assertEquals(listOf("log: server started", "log: ready on port 8080"), result)
+    }
+
+    @Test
+    fun testDockerComposeSourceDelegation() = runTest {
+        // Given DockerCompose log source
+        val composeSource = LogSource.DockerCompose(
+            projectDir = "/apps/backend",
+            serviceName = "api",
+            composeFile = null
+        )
+        fakeDockerComposeClient.customLogFlow = listOf("compose: api running", "compose: db connected").asFlow()
+
+        // When streaming logs
+        val result = logStreamService.streamLogs(composeSource, tail = 75).toList()
+
+        // Then verify DockerComposeClient was invoked with correct arguments
+        assertEquals("/apps/backend", fakeDockerComposeClient.lastRequestedProjectDir)
+        assertEquals("api", fakeDockerComposeClient.lastRequestedServiceName)
+        assertEquals(null, fakeDockerComposeClient.lastRequestedComposeFile)
+        assertEquals(75, fakeDockerComposeClient.lastRequestedTail)
+        assertEquals(listOf("compose: api running", "compose: db connected"), result)
+    }
+
+    @Test
+    fun testDockerComposeSourceWithCustomFileDelegation() = runTest {
+        // Given DockerCompose log source with custom compose file
+        val composeSource = LogSource.DockerCompose(
+            projectDir = "/apps/prod",
+            serviceName = "worker",
+            composeFile = "docker-compose.prod.yml"
+        )
+        fakeDockerComposeClient.customLogFlow = listOf("worker: job processed").asFlow()
+
+        // When streaming logs
+        val result = logStreamService.streamLogs(composeSource, tail = 100).toList()
+
+        // Then verify DockerComposeClient was invoked with custom compose file
+        assertEquals("/apps/prod", fakeDockerComposeClient.lastRequestedProjectDir)
+        assertEquals("worker", fakeDockerComposeClient.lastRequestedServiceName)
+        assertEquals("docker-compose.prod.yml", fakeDockerComposeClient.lastRequestedComposeFile)
+        assertEquals(100, fakeDockerComposeClient.lastRequestedTail)
+        assertEquals(listOf("worker: job processed"), result)
     }
 
     @Test

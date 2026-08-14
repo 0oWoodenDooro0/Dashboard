@@ -191,4 +191,99 @@ class ServiceFormValidatorTest {
         assertIs<FormValidationResult.Success>(result)
         assertEquals(listOf("redis", "cache", "in-memory"), result.serviceItem.tags)
     }
+
+    @Test
+    fun `validate with valid docker compose inputs creates DockerCompose LogSource`() {
+        val formState = ServiceFormState(
+            name = "Compose Service",
+            logSourceType = LogSourceType.DOCKER_COMPOSE,
+            composeProjectDir = " /apps/my-project ",
+            composeServiceName = " backend "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            LogSource.DockerCompose(
+                projectDir = "/apps/my-project",
+                serviceName = "backend",
+                composeFile = null
+            ),
+            result.serviceItem.logSource
+        )
+    }
+
+    @Test
+    fun `validate with custom compose file preserves composeFile`() {
+        val formState = ServiceFormState(
+            name = "Custom Compose Service",
+            logSourceType = LogSourceType.DOCKER_COMPOSE,
+            composeProjectDir = "/apps/my-project",
+            composeServiceName = "api",
+            composeFileName = " docker-compose.prod.yml "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            LogSource.DockerCompose(
+                projectDir = "/apps/my-project",
+                serviceName = "api",
+                composeFile = "docker-compose.prod.yml"
+            ),
+            result.serviceItem.logSource
+        )
+    }
+
+    @Test
+    fun `validate fails when docker compose project directory is blank`() {
+        val formState = ServiceFormState(
+            name = "Compose Missing Dir",
+            logSourceType = LogSourceType.DOCKER_COMPOSE,
+            composeProjectDir = "   ",
+            composeServiceName = "api"
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("composeProjectDir"))
+        assertEquals("Project folder/directory cannot be empty for Docker Compose log source", result.errors["composeProjectDir"])
+    }
+
+    @Test
+    fun `validate fails when docker compose service name is blank`() {
+        val formState = ServiceFormState(
+            name = "Compose Missing Service",
+            logSourceType = LogSourceType.DOCKER_COMPOSE,
+            composeProjectDir = "/apps/project",
+            composeServiceName = "   "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("composeServiceName"))
+        assertEquals("Service name cannot be empty for Docker Compose log source", result.errors["composeServiceName"])
+    }
+
+    @Test
+    fun `fromServiceItem correctly maps DockerCompose LogSource`() {
+        val item = website.woodendoor.dashboard.model.ServiceItem(
+            id = "compose-item",
+            name = "Compose Item",
+            logSource = LogSource.DockerCompose(
+                projectDir = "/home/user/workspace",
+                serviceName = "web-worker",
+                composeFile = "compose.yaml"
+            )
+        )
+
+        val formState = ServiceFormState.fromServiceItem(item, "Backend Services")
+
+        assertEquals(LogSourceType.DOCKER_COMPOSE, formState.logSourceType)
+        assertEquals("/home/user/workspace", formState.composeProjectDir)
+        assertEquals("web-worker", formState.composeServiceName)
+        assertEquals("compose.yaml", formState.composeFileName)
+        assertEquals("Backend Services", formState.groupName)
+    }
 }
+

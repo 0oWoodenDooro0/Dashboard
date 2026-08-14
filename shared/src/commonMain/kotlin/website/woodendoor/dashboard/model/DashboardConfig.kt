@@ -10,6 +10,14 @@ sealed interface LogSource {
     data class Docker(val containerName: String) : LogSource
 
     @Serializable
+    @SerialName("docker-compose")
+    data class DockerCompose(
+        val projectDir: String,
+        val serviceName: String,
+        val composeFile: String? = null
+    ) : LogSource
+
+    @Serializable
     @SerialName("file")
     data class LocalFile(val path: String) : LogSource
 
@@ -17,6 +25,9 @@ sealed interface LogSource {
     @SerialName("none")
     data object None : LogSource
 }
+
+fun LogSource.DockerCompose.stateKey(): String =
+    "compose:$projectDir:$serviceName${if (!composeFile.isNullOrBlank()) ":$composeFile" else ""}"
 
 @Serializable
 data class ServiceItem(

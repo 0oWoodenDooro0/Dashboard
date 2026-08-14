@@ -41,6 +41,7 @@ class DashboardViewModelTest {
     private lateinit var fakeHealthChecker: FakePortHealthChecker
     private lateinit var fakeLogStreamService: FakeLogStreamService
     private lateinit var fakeDockerClient: FakeDockerClient
+    private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
 
     private val sampleService1 = ServiceItem(
         id = "web-1",
@@ -64,6 +65,17 @@ class DashboardViewModelTest {
         host = "127.0.0.1",
         port = 6379,
         logSource = LogSource.None
+    )
+
+    private val sampleService4 = ServiceItem(
+        id = "compose-1",
+        name = "Compose Service",
+        host = "127.0.0.1",
+        port = 8080,
+        logSource = LogSource.DockerCompose(
+            projectDir = "/apps/conflux",
+            serviceName = "backend"
+        )
     )
 
     private val sampleGroup = ServiceGroup(
@@ -169,12 +181,35 @@ class DashboardViewModelTest {
         override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = customLogFlow
     }
 
+    private class FakeDockerComposeClient(
+        var isComposeAvailableResult: Boolean = true
+    ) : website.woodendoor.dashboard.service.DockerComposeClient {
+        var composeStates = mutableMapOf<String, ContainerState>()
+        var customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
+        var shouldThrowOnAvailable = false
+
+        override suspend fun isComposeAvailable(): Boolean {
+            if (shouldThrowOnAvailable) throw RuntimeException("Compose error")
+            return isComposeAvailableResult
+        }
+
+        override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState {
+            val key = "compose:$projectDir:$serviceName${if (!composeFile.isNullOrBlank()) ":$composeFile" else ""}"
+            return composeStates[key] ?: ContainerState.Running(status = "running")
+        }
+
+        override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
+
+        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> = customLogFlow
+    }
+
     @BeforeTest
     fun setUp() {
         fakeConfigRepository = FakeConfigRepository(sampleConfig)
         fakeHealthChecker = FakePortHealthChecker()
         fakeLogStreamService = FakeLogStreamService()
         fakeDockerClient = FakeDockerClient(isDockerAvailableResult = true)
+        fakeDockerComposeClient = FakeDockerComposeClient(isComposeAvailableResult = true)
     }
 
     private fun createViewModel(
@@ -187,6 +222,7 @@ class DashboardViewModelTest {
             healthChecker = fakeHealthChecker,
             logStreamService = fakeLogStreamService,
             dockerClient = fakeDockerClient,
+            dockerComposeClient = fakeDockerComposeClient,
             coroutineScope = testScope,
             defaultDispatcher = dispatcher,
             maxLogBufferSize = maxLogBufferSize
@@ -547,5 +583,87 @@ class DashboardViewModelTest {
 
         viewModel.clearError()
         assertNull(viewModel.state.value.errorMessage)
+    }
+
+    @Test
+    fun periodicPolling_updatesDockerComposeContainerStates() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        advanceUntilIdle()
+
+        val composeConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService4))
+        )
+        fakeConfigRepository.saveConfig(composeConfig)
+        advanceUntilIdle()
+
+        val composeKey = "compose:/apps/conflux:backend"
+        fakeDockerComposeClient.composeStates[composeKey] = ContainerState.Exited(exitCode = 143)
+
+        // Advance by polling interval
+        advanceTimeBy(5100)
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        val containerState = state.containerStates[composeKey]
+        assertNotNull(containerState)
+        assertIs<ContainerState.Exited>(containerState)
+        assertEquals(143, containerState.exitCode)
+    }
+
+    @Test
+    fun selectService_dockerComposeLogSource_startsLogStream() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        advanceUntilIdle()
+
+        val composeConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService4))
+        )
+        fakeConfigRepository.saveConfig(composeConfig)
+        advanceUntilIdle()
+
+        viewModel.selectService("compose-1")
+        advanceUntilIdle()
+
+        assertEquals("compose-1", viewModel.state.value.selectedServiceId)
+        assertEquals(sampleService4, viewModel.state.value.selectedService)
+
+        val flow = fakeLogStreamService.getOrCreateFlow(sampleService4.logSource)
+        flow.emit("compose backend | started")
+        flow.emit("compose backend | ready")
+        advanceUntilIdle()
+
+        val state = viewModel.state.value
+        assertEquals(2, state.logs.size)
+        assertEquals("compose backend | started", state.logs[0])
+        assertEquals("compose backend | ready", state.logs[1])
+    }
+
+    @Test
+    fun updateService_switchingToDockerCompose_restartsLogStream() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        advanceUntilIdle()
+
+        viewModel.selectService("web-1")
+        val oldFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        oldFlow.emit("web log 1")
+        advanceUntilIdle()
+        assertEquals(listOf("web log 1"), viewModel.state.value.logs)
+
+        val newComposeSource = LogSource.DockerCompose(
+            projectDir = "/apps/new-web",
+            serviceName = "web-service"
+        )
+        val updatedWeb1 = sampleService1.copy(logSource = newComposeSource)
+        viewModel.updateService(updatedWeb1)
+        advanceUntilIdle()
+
+        val composeFlow = fakeLogStreamService.getOrCreateFlow(newComposeSource)
+        composeFlow.emit("compose new log 1")
+        advanceUntilIdle()
+
+        assertEquals(listOf("compose new log 1"), viewModel.state.value.logs)
     }
 }
