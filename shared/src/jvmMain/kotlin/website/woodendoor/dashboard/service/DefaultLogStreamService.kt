@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import website.woodendoor.dashboard.model.LogSource
 
@@ -117,7 +118,7 @@ class DefaultLogStreamService(
 
             delay(pollDelayMs)
         }
-    }
+    }.flowOn(ioDispatcher)
 
     private fun readInitialTailLines(file: File, tail: Int): Pair<List<String>, Long> {
         val lines = ArrayDeque<String>()
