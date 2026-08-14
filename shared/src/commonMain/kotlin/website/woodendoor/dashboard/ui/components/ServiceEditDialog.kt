@@ -42,6 +42,7 @@ import website.woodendoor.dashboard.ui.util.ServiceFormValidator
 fun ServiceEditDialog(
     initialService: ServiceItem?,
     initialGroupName: String,
+    existingServices: List<ServiceItem> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (ServiceItem, String) -> Unit
 ) {
@@ -260,7 +261,7 @@ fun ServiceEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    when (val result = ServiceFormValidator.validate(formState)) {
+                    when (val result = ServiceFormValidator.validate(formState, existingServices = existingServices, currentServiceId = initialService?.id)) {
                         is FormValidationResult.Success -> {
                             errors = emptyMap()
                             onSave(result.serviceItem, result.groupName)

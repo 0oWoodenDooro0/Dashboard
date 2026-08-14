@@ -3,35 +3,9 @@
     "pollingIntervalSeconds": 5,
     "groups": [
         {
-            "id": "web-apps",
-            "name": "Web Applications",
-            "services": []
-        },
-        {
-            "id": "databases",
-            "name": "Databases & Cache",
-            "services": []
-        },
-        {
             "id": "Minecraft",
             "name": "Minecraft",
             "services": [
-                {
-                    "id": "dontdoit",
-                    "name": "DontDoIt",
-                    "host": "127.0.0.1",
-                    "port": 25565,
-                    "healthUrl": null,
-                    "openUrl": null,
-                    "logSource": {
-                        "type": "docker-compose",
-                        "projectDir": "/home/user/Desktop/dontdoit",
-                        "serviceName": "mc",
-                        "composeFile": "docker-compose.yml"
-                    },
-                    "description": null,
-                    "tags": []
-                },
                 {
                     "id": "test",
                     "name": "test",
@@ -42,7 +16,7 @@
                     "logSource": {
                         "type": "command",
                         "workingDir": "/home/user/IdeaProjects/Dashboard",
-                        "startCommand": "./gradlew :shared:jvmTest",
+                        "startCommand": "./gradlew :shared:jvmTest --console=plain --info",
                         "stopCommand": null,
                         "environment": {}
                     },

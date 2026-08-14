@@ -55,6 +55,7 @@ fun ServiceListPane(
     onStartService: (ServiceItem) -> Unit = {},
     onStopService: (ServiceItem) -> Unit = {},
     onRestartService: (ServiceItem) -> Unit = {},
+    onDeleteGroup: ((ServiceGroup) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var searchFilter by remember { mutableStateOf("") }
@@ -203,7 +204,8 @@ fun ServiceListPane(
                             GroupHeader(
                                 groupName = group.name,
                                 count = group.services.size,
-                                onAddClick = { onAddServiceToGroup(group.name) }
+                                onAddClick = { onAddServiceToGroup(group.name) },
+                                onDeleteClick = if (onDeleteGroup != null) { { onDeleteGroup(group) } } else null
                             )
                         }
 
@@ -242,6 +244,7 @@ fun GroupHeader(
     groupName: String,
     count: Int,
     onAddClick: () -> Unit,
+    onDeleteClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -285,19 +288,41 @@ fun GroupHeader(
                 )
             }
 
-            TextButton(
-                onClick = onAddClick,
-                shape = MaterialTheme.shapes.extraSmall,
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                modifier = Modifier.height(26.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = "Add",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
+                TextButton(
+                    onClick = onAddClick,
+                    shape = MaterialTheme.shapes.extraSmall,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(26.dp)
+                ) {
+                    Text(
+                        text = "Add",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
-                )
+                }
+
+                if (onDeleteClick != null) {
+                    TextButton(
+                        onClick = onDeleteClick,
+                        shape = MaterialTheme.shapes.extraSmall,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.height(26.dp)
+                    ) {
+                        Text(
+                            text = "Delete",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        )
+                    }
+                }
             }
         }
 

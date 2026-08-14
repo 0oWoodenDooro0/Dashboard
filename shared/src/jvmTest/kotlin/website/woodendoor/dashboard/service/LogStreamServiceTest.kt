@@ -150,6 +150,26 @@ class LogStreamServiceTest {
     }
 
     @Test
+    fun testCommandSourceWithServiceIdDelegation() = runTest {
+        // Given Command log source with explicit serviceId
+        val commandSource = LogSource.Command(
+            workingDir = "/home/user/project",
+            startCommand = "npm run dev",
+            stopCommand = "npm run stop"
+        )
+        val serviceId = "frontend-vite"
+        fakeProcessManager.customLogFlow = listOf("VITE v5.0.0 ready on port 5173").asFlow()
+
+        // When streaming logs with serviceId
+        val result = logStreamService.streamLogs(commandSource, serviceId = serviceId, tail = 50).toList()
+
+        // Then verify ProcessManager was invoked with serviceId directly
+        assertEquals(serviceId, fakeProcessManager.lastRequestedServiceId)
+        assertEquals(50, fakeProcessManager.lastRequestedTail)
+        assertEquals(listOf("VITE v5.0.0 ready on port 5173"), result)
+    }
+
+    @Test
     fun testDockerSourceDelegation() = runTest {
         // Given Docker log source
         val dockerSource = LogSource.Docker(containerName = "web-backend")

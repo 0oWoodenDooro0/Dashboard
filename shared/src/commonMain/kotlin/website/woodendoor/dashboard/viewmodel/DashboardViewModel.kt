@@ -248,7 +248,7 @@ class DashboardViewModel(
         logStreamJob?.cancel()
         logStreamJob = scope.launch(defaultDispatcher, start = CoroutineStart.UNDISPATCHED) {
             try {
-                logStreamService.streamLogs(service.logSource, tail = 100)
+                logStreamService.streamLogs(service.logSource, serviceId = service.id, tail = 100)
                     .catch { e ->
                         _state.update { current ->
                             val updatedLogs = current.logs + "[Error streaming logs: ${e.message}]"
@@ -284,10 +284,24 @@ class DashboardViewModel(
         val currentConfig = _state.value.config
         val targetGroupId = groupId ?: currentConfig.groups.firstOrNull()?.id ?: "default"
 
+        val existingIds = currentConfig.groups.flatMap { it.services }.map { it.id }.toSet()
+        val uniqueId = if (service.id in existingIds) {
+            var suffix = 2
+            var candidate = "${service.id}-$suffix"
+            while (candidate in existingIds) {
+                suffix++
+                candidate = "${service.id}-$suffix"
+            }
+            candidate
+        } else {
+            service.id
+        }
+        val sanitizedService = if (uniqueId != service.id) service.copy(id = uniqueId) else service
+
         val updatedGroups = if (currentConfig.groups.any { it.id == targetGroupId }) {
             currentConfig.groups.map { group ->
                 if (group.id == targetGroupId) {
-                    group.copy(services = group.services + service)
+                    group.copy(services = group.services + sanitizedService)
                 } else {
                     group
                 }
@@ -296,7 +310,7 @@ class DashboardViewModel(
             currentConfig.groups + ServiceGroup(
                 id = targetGroupId,
                 name = targetGroupId,
-                services = listOf(service)
+                services = listOf(sanitizedService)
             )
         }
 
@@ -359,11 +373,27 @@ class DashboardViewModel(
             selectService(null)
         }
 
+        if (processManager != null && targetGroup != null) {
+            for (service in targetGroup.services) {
+                if (processManager.isRunning(service.id)) {
+                    scope.launch(defaultDispatcher) {
+                        try {
+                            processManager.stopProcess(service.id)
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+
         val updatedConfig = currentConfig.copy(groups = currentConfig.groups.filterNot { it.id == groupId })
         saveConfigInternal(updatedConfig)
     }
 
     fun startService(service: ServiceItem) {
+        if (_state.value.selectedServiceId != service.id) {
+            _state.update { it.copy(selectedServiceId = service.id, logs = emptyList()) }
+        }
+
         scope.launch(defaultDispatcher) {
             when (val src = service.logSource) {
                 is LogSource.Command -> {
@@ -378,6 +408,7 @@ class DashboardViewModel(
                             command = src.startCommand,
                             environment = src.environment
                         )
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e
@@ -388,6 +419,7 @@ class DashboardViewModel(
                 is LogSource.Docker -> {
                     try {
                         dockerClient.startContainer(src.containerName)
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e
@@ -398,6 +430,7 @@ class DashboardViewModel(
                 is LogSource.DockerCompose -> {
                     try {
                         dockerComposeClient.startService(src.projectDir, src.serviceName, src.composeFile)
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e
@@ -461,6 +494,10 @@ class DashboardViewModel(
     }
 
     fun restartService(service: ServiceItem) {
+        if (_state.value.selectedServiceId != service.id) {
+            _state.update { it.copy(selectedServiceId = service.id, logs = emptyList()) }
+        }
+
         scope.launch(defaultDispatcher) {
             when (val src = service.logSource) {
                 is LogSource.Command -> {
@@ -476,6 +513,7 @@ class DashboardViewModel(
                             stopCommand = src.stopCommand,
                             environment = src.environment
                         )
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e
@@ -486,6 +524,7 @@ class DashboardViewModel(
                 is LogSource.Docker -> {
                     try {
                         dockerClient.restartContainer(src.containerName)
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e
@@ -496,6 +535,7 @@ class DashboardViewModel(
                 is LogSource.DockerCompose -> {
                     try {
                         dockerComposeClient.restartService(src.projectDir, src.serviceName, src.composeFile)
+                        startLogStreamForService(service)
                         refreshHealthAndDocker()
                     } catch (e: CancellationException) {
                         throw e

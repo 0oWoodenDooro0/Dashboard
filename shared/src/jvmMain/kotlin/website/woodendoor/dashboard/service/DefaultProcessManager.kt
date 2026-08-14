@@ -51,7 +51,7 @@ class DefaultProcessManager(
 
         @Synchronized
         fun getTail(tail: Int): Pair<List<String>, Long> {
-            if (tail <= 0) return Pair(emptyList(), totalLines)
+            if (tail <= 0) return Pair(emptyList(), 0L)
             val count = minOf(tail, buffer.size)
             val start = buffer.size - count
             val snapshot = ArrayList<String>(count)
@@ -154,12 +154,16 @@ class DefaultProcessManager(
             }
 
             val logBuffer = historyLogBuffers.computeIfAbsent(serviceId) { LogBuffer(maxLogBufferSize) }
-            val logFlow = MutableSharedFlow<LogEntry>(
-                replay = 1,
-                extraBufferCapacity = 65536,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST
-            )
-            historyLogFlows[serviceId] = logFlow
+            val existingFlow = historyLogFlows[serviceId]
+            val logFlow = if (existingFlow != null && !existingFlow.replayCache.any { it.isEndOfStream }) {
+                existingFlow
+            } else {
+                MutableSharedFlow<LogEntry>(
+                    replay = 65536,
+                    extraBufferCapacity = 65536,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST
+                ).also { historyLogFlows[serviceId] = it }
+            }
             historyStates[serviceId] = ContainerState.Running("running")
 
             val logJob = scope.launch {
@@ -290,24 +294,30 @@ class DefaultProcessManager(
     }
 
     override fun streamLogs(serviceId: String, tail: Int): Flow<String> = flow {
-        val logBuffer = historyLogBuffers[serviceId] ?: activeProcesses[serviceId]?.logBuffer
-        val liveFlow = historyLogFlows[serviceId]
-
-        var lastEmittedSeq = 0L
-        if (logBuffer != null) {
-            val (initialLines, currentSeq) = logBuffer.getTail(tail)
-            lastEmittedSeq = currentSeq
-            for (line in initialLines) {
-                emit(line)
-            }
+        val logBuffer = historyLogBuffers.computeIfAbsent(serviceId) { LogBuffer(maxLogBufferSize) }
+        val liveFlow = historyLogFlows.computeIfAbsent(serviceId) {
+            MutableSharedFlow(
+                replay = 65536,
+                extraBufferCapacity = 65536,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
         }
 
-        if (liveFlow != null) {
-            liveFlow.takeWhile { !it.isEndOfStream }.collect { entry ->
-                if (entry.seq > lastEmittedSeq) {
-                    lastEmittedSeq = entry.seq
-                    emit(entry.text)
-                }
+        var lastEmittedSeq = 0L
+        val (initialLines, currentSeq) = logBuffer.getTail(tail)
+        lastEmittedSeq = currentSeq
+        for (line in initialLines) {
+            emit(line)
+        }
+
+        if (!isRunning(serviceId) && liveFlow.replayCache.any { it.isEndOfStream }) {
+            return@flow
+        }
+
+        liveFlow.takeWhile { !it.isEndOfStream }.collect { entry ->
+            if (entry.seq > lastEmittedSeq) {
+                lastEmittedSeq = entry.seq
+                emit(entry.text)
             }
         }
     }.flowOn(ioDispatcher)

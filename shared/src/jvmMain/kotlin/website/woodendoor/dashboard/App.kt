@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.service.CliDockerComposeClient
 import website.woodendoor.dashboard.service.CliDockerClient
@@ -27,6 +28,7 @@ import website.woodendoor.dashboard.service.DefaultProcessManager
 import website.woodendoor.dashboard.service.FileConfigRepository
 import website.woodendoor.dashboard.service.SocketPortHealthChecker
 import website.woodendoor.dashboard.ui.components.DashboardTopBar
+import website.woodendoor.dashboard.ui.components.DeleteCategoryConfirmDialog
 import website.woodendoor.dashboard.ui.components.DeleteConfirmDialog
 import website.woodendoor.dashboard.ui.components.LogConsolePane
 import website.woodendoor.dashboard.ui.components.ServiceEditDialog
@@ -65,6 +67,9 @@ fun App(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deletingService by remember { mutableStateOf<ServiceItem?>(null) }
+
+    var showDeleteCategoryDialog by remember { mutableStateOf(false) }
+    var deletingGroup by remember { mutableStateOf<ServiceGroup?>(null) }
 
     // Display reactive error snackbar notifications
     val errorMessage = state.errorMessage
@@ -148,6 +153,10 @@ fun App(
                     onRestartService = { service ->
                         viewModel.restartService(service)
                     },
+                    onDeleteGroup = { group ->
+                        deletingGroup = group
+                        showDeleteCategoryDialog = true
+                    },
                     modifier = Modifier.width(380.dp)
                 )
 
@@ -186,6 +195,7 @@ fun App(
                 ServiceEditDialog(
                     initialService = editingService,
                     initialGroupName = editingGroupName,
+                    existingServices = state.allServices,
                     onDismiss = { showEditDialog = false },
                     onSave = { serviceItem, groupName ->
                         if (editingService != null) {
@@ -207,6 +217,18 @@ fun App(
                     onConfirm = {
                         viewModel.deleteService(deletingService!!.id)
                         showDeleteDialog = false
+                    }
+                )
+            }
+
+            // Delete Category Confirmation Dialog
+            if (showDeleteCategoryDialog && deletingGroup != null) {
+                DeleteCategoryConfirmDialog(
+                    group = deletingGroup!!,
+                    onDismiss = { showDeleteCategoryDialog = false },
+                    onConfirm = {
+                        viewModel.deleteGroup(deletingGroup!!.id)
+                        showDeleteCategoryDialog = false
                     }
                 )
             }

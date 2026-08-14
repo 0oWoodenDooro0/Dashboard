@@ -379,5 +379,43 @@ class ServiceFormValidatorTest {
         assertEquals("npm stop", formState.commandStopScript)
         assertEquals("Node Services", formState.groupName)
     }
+
+    @Test
+    fun `validate fails when service name is duplicate across existing services`() {
+        val existing = listOf(
+            website.woodendoor.dashboard.model.ServiceItem(id = "srv-1", name = "My Service"),
+            website.woodendoor.dashboard.model.ServiceItem(id = "srv-2", name = "Another Service")
+        )
+        val formState = ServiceFormState(
+            name = "my service"
+        )
+
+        val result = ServiceFormValidator.validate(formState, existingServices = existing)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("name"))
+        assertEquals("A service with this name already exists", result.errors["name"])
+    }
+
+    @Test
+    fun `validate allows same name when editing the same service`() {
+        val existing = listOf(
+            website.woodendoor.dashboard.model.ServiceItem(id = "srv-1", name = "My Service")
+        )
+        val formState = ServiceFormState(
+            id = "srv-1",
+            name = "My Service"
+        )
+
+        val result = ServiceFormValidator.validate(formState, existingServices = existing, currentServiceId = "srv-1")
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals("My Service", result.serviceItem.name)
+    }
+
+    @Test
+    fun `generateSlug produces unique ids when duplicates exist`() {
+        val existingIds = setOf("test", "test-2", "test-3")
+        val uniqueSlug = ServiceFormValidator.generateSlug("Test", existingIds)
+        assertEquals("test-4", uniqueSlug)
+    }
 }
 
