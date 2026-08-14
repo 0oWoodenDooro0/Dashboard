@@ -152,13 +152,15 @@ class DashboardViewModelTest {
     private class FakeLogStreamService : LogStreamService {
         val flowMap = mutableMapOf<LogSource, MutableSharedFlow<String>>()
         var lastRequestedSource: LogSource? = null
+        var lastRequestedServiceId: String? = null
 
         fun getOrCreateFlow(source: LogSource): MutableSharedFlow<String> {
             return flowMap.getOrPut(source) { MutableSharedFlow(extraBufferCapacity = 64) }
         }
 
-        override fun streamLogs(source: LogSource, tail: Int): Flow<String> {
+        override fun streamLogs(source: LogSource, serviceId: String?, tail: Int): Flow<String> {
             lastRequestedSource = source
+            lastRequestedServiceId = serviceId
             return when (source) {
                 is LogSource.None -> flow {}
                 else -> getOrCreateFlow(source)
@@ -949,5 +951,129 @@ class DashboardViewModelTest {
         viewModel.stopService(sampleService4)
         runCurrent()
         assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates[composeKey])
+    }
+
+    @Test
+    fun deleteGroup_stopsRunningProcessesInGroupAndClearsSelection() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val multiServiceGroup = sampleGroup.copy(
+            services = listOf(sampleService1, sampleService5)
+        )
+        val groupConfig = sampleConfig.copy(groups = listOf(multiServiceGroup))
+        fakeConfigRepository.saveConfig(groupConfig)
+        runCurrent()
+
+        // Start command service and select it
+        viewModel.startService(sampleService5)
+        runCurrent()
+        assertTrue(fakeProcessManager.isRunning("cmd-1"))
+        assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
+
+        // Delete group containing the running service
+        viewModel.deleteGroup(multiServiceGroup.id)
+        runCurrent()
+
+        // Verify running process in group was stopped
+        assertEquals(1, fakeProcessManager.stopProcessCalls.size)
+        assertEquals("cmd-1", fakeProcessManager.stopProcessCalls.first())
+        assertFalse(fakeProcessManager.isRunning("cmd-1"))
+
+        // Verify selection was cleared
+        assertNull(viewModel.state.value.selectedServiceId)
+        assertTrue(viewModel.state.value.config.groups.none { it.id == multiServiceGroup.id })
+    }
+
+    @Test
+    fun startService_autoSelectsServiceAndStreamsLogs_whenUnselected() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // Ensure nothing is selected initially
+        assertNull(viewModel.state.value.selectedServiceId)
+
+        // Start service
+        viewModel.startService(sampleService5)
+        runCurrent()
+
+        // Verify service is automatically selected and log stream connected
+        assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
+        assertEquals(sampleService5, viewModel.state.value.selectedService)
+        assertEquals("cmd-1", fakeLogStreamService.lastRequestedServiceId)
+
+        // Emit log line to flow
+        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        flow.emit("npm dev server started")
+        runCurrent()
+
+        assertEquals(listOf("npm dev server started"), viewModel.state.value.logs)
+    }
+
+    @Test
+    fun startService_reattachesLogStream_whenAlreadySelected() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // Pre-select the service
+        viewModel.selectService("cmd-1")
+        runCurrent()
+        assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
+
+        // Start service while already selected
+        viewModel.startService(sampleService5)
+        runCurrent()
+
+        // Verify stream remains active and receives new lines
+        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        flow.emit("new process output after start")
+        runCurrent()
+
+        assertTrue(viewModel.state.value.logs.contains("new process output after start"))
+    }
+
+    @Test
+    fun restartService_autoSelectsServiceAndStreamsLogs_whenUnselected() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // Ensure unselected
+        assertNull(viewModel.state.value.selectedServiceId)
+
+        // Restart service
+        viewModel.restartService(sampleService5)
+        runCurrent()
+
+        // Verify auto-focus
+        assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
+        assertEquals("cmd-1", fakeLogStreamService.lastRequestedServiceId)
+
+        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        flow.emit("server restarted successfully")
+        runCurrent()
+
+        assertEquals(listOf("server restarted successfully"), viewModel.state.value.logs)
     }
 }

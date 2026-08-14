@@ -114,12 +114,23 @@ sealed interface FormValidationResult {
 
 object ServiceFormValidator {
 
-    fun validate(state: ServiceFormState): FormValidationResult {
+    fun validate(
+        state: ServiceFormState,
+        existingServices: List<ServiceItem> = emptyList(),
+        currentServiceId: String? = null
+    ): FormValidationResult {
         val errors = mutableMapOf<String, String>()
 
         val trimmedName = state.name.trim()
         if (trimmedName.isEmpty()) {
             errors["name"] = "Service name cannot be empty"
+        } else {
+            val isDuplicateName = existingServices.any { service ->
+                service.id != currentServiceId && service.name.equals(trimmedName, ignoreCase = true)
+            }
+            if (isDuplicateName) {
+                errors["name"] = "A service with this name already exists"
+            }
         }
 
         val parsedPort = if (state.port.isNotBlank()) {
@@ -204,10 +215,11 @@ object ServiceFormValidator {
             return FormValidationResult.Error(errors)
         }
 
+        val existingIds = existingServices.filter { it.id != currentServiceId }.map { it.id }.toSet()
         val effectiveId = if (state.id.isNotBlank()) {
             state.id.trim()
         } else {
-            generateSlug(trimmedName)
+            generateSlug(trimmedName, existingIds)
         }
 
         val effectiveHost = if (state.host.isNotBlank()) state.host.trim() else "127.0.0.1"
@@ -238,10 +250,22 @@ object ServiceFormValidator {
         )
     }
 
-    private fun generateSlug(input: String): String {
-        val slug = input.lowercase()
+    fun generateSlug(input: String, existingIds: Set<String> = emptySet()): String {
+        val baseSlug = input.lowercase()
             .replace(Regex("""[^a-z0-9]+"""), "-")
             .trim('-')
-        return slug.ifEmpty { "service-${System.currentTimeMillis()}" }
+            .ifEmpty { "service-${System.currentTimeMillis()}" }
+
+        if (baseSlug !in existingIds) {
+            return baseSlug
+        }
+
+        var suffix = 2
+        var candidate = "$baseSlug-$suffix"
+        while (candidate in existingIds) {
+            suffix++
+            candidate = "$baseSlug-$suffix"
+        }
+        return candidate
     }
 }

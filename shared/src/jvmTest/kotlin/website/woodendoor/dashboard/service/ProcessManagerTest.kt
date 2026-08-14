@@ -11,6 +11,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -307,6 +308,42 @@ class ProcessManagerTest {
             assertTrue(logs[0].contains("line 18"), "First emitted line should be line 18. Actual: ${logs[0]}")
             assertTrue(logs[1].contains("line 19"), "Second emitted line should be line 19. Actual: ${logs[1]}")
             assertTrue(logs[2].contains("line 20"), "Third emitted line should be line 20. Actual: ${logs[2]}")
+        }
+    }
+
+    @Test
+    fun testStreamLogsConnectedBeforeStartProcessCapturesLiveOutput() = runTest {
+        withContext(Dispatchers.Default) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+            val cmd = if (isWindows) {
+                "echo pre-connected line 1 & echo pre-connected line 2"
+            } else {
+                "echo 'pre-connected line 1'; echo 'pre-connected line 2'"
+            }
+
+            val serviceId = "preconnect-service"
+
+            // Connect log stream BEFORE starting the process
+            val flow = processManager.streamLogs(serviceId = serviceId, tail = 10)
+
+            val collector = async {
+                withTimeout(5000) {
+                    flow.take(2).toList()
+                }
+            }
+
+            delay(50)
+
+            // Start process after stream collector is already listening
+            processManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd
+            )
+
+            val logs = collector.await()
+            assertTrue(logs.any { it.contains("pre-connected line 1") }, "Should capture line 1 when subscribed before start")
+            assertTrue(logs.any { it.contains("pre-connected line 2") }, "Should capture line 2 when subscribed before start")
         }
     }
 }

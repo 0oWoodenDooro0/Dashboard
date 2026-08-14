@@ -23,7 +23,7 @@ class DefaultLogStreamService(
     private val pollDelayMs: Long = 100L
 ) : LogStreamService {
 
-    override fun streamLogs(source: LogSource, tail: Int): Flow<String> {
+    override fun streamLogs(source: LogSource, serviceId: String?, tail: Int): Flow<String> {
         return when (source) {
             is LogSource.Docker -> dockerClient.streamLogs(source.containerName, tail = tail)
             is LogSource.DockerCompose -> dockerComposeClient.streamLogs(
@@ -32,7 +32,13 @@ class DefaultLogStreamService(
                 composeFile = source.composeFile,
                 tail = tail
             )
-            is LogSource.Command -> processManager.streamLogs(source, tail = tail)
+            is LogSource.Command -> {
+                if (!serviceId.isNullOrBlank()) {
+                    processManager.streamLogs(serviceId, tail = tail)
+                } else {
+                    processManager.streamLogs(source, tail = tail)
+                }
+            }
             is LogSource.LocalFile -> streamLocalFile(File(source.path), tail = tail)
             is LogSource.None -> emptyFlow()
         }
