@@ -97,6 +97,20 @@ class ConfigRepositoryTest {
                         ),
                         ServiceItem(
                             id = "srv-3",
+                            name = "Local Dev Server",
+                            host = "127.0.0.1",
+                            port = 3000,
+                            logSource = LogSource.Command(
+                                workingDir = "/home/user/project",
+                                startCommand = "npm run dev",
+                                stopCommand = "npm run stop",
+                                environment = mapOf("NODE_ENV" to "development")
+                            ),
+                            description = "Frontend Vite dev server",
+                            tags = listOf("vite", "frontend")
+                        ),
+                        ServiceItem(
+                            id = "srv-4",
                             name = "External Dashboard",
                             host = "192.168.1.100",
                             port = 443,
@@ -123,12 +137,18 @@ class ConfigRepositoryTest {
         assertEquals(1, loadedConfig.groups.size)
 
         val services = loadedConfig.groups.first().services
-        assertEquals(3, services.size)
+        assertEquals(4, services.size)
         assertTrue(services[0].logSource is LogSource.Docker)
         assertEquals("auth-backend-1", (services[0].logSource as LogSource.Docker).containerName)
         assertTrue(services[1].logSource is LogSource.LocalFile)
         assertEquals("/var/log/worker.log", (services[1].logSource as LogSource.LocalFile).path)
-        assertTrue(services[2].logSource is LogSource.None)
+        assertTrue(services[2].logSource is LogSource.Command)
+        val cmdSource = services[2].logSource as LogSource.Command
+        assertEquals("/home/user/project", cmdSource.workingDir)
+        assertEquals("npm run dev", cmdSource.startCommand)
+        assertEquals("npm run stop", cmdSource.stopCommand)
+        assertEquals(mapOf("NODE_ENV" to "development"), cmdSource.environment)
+        assertTrue(services[3].logSource is LogSource.None)
     }
 
     @Test

@@ -117,6 +117,53 @@ class CliDockerComposeClient(
         return executor.executeStreaming(cmd)
     }
 
+    override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("start", serviceName)
+        )
+        val result = executor.execute(cmd)
+        if (result.exitCode != 0) {
+            val upCmd = buildComposeCommand(
+                projectDir = projectDir,
+                composeFile = composeFile,
+                subcommandAndArgs = listOf("up", "-d", serviceName)
+            )
+            val upResult = executor.execute(upCmd, timeoutMs = 30000)
+            if (upResult.exitCode != 0) {
+                val error = upResult.stderr.ifBlank { upResult.stdout }.ifBlank { "Failed to start service $serviceName" }
+                throw RuntimeException(error.trim())
+            }
+        }
+    }
+
+    override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("stop", serviceName)
+        )
+        val result = executor.execute(cmd, timeoutMs = 15000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop service $serviceName" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
+    override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("restart", serviceName)
+        )
+        val result = executor.execute(cmd, timeoutMs = 20000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart service $serviceName" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
     @Serializable
     private data class RawComposePsOutput(
         @SerialName("ID") val id: String = "",

@@ -31,6 +31,23 @@
                     },
                     "description": null,
                     "tags": []
+                },
+                {
+                    "id": "test",
+                    "name": "test",
+                    "host": "127.0.0.1",
+                    "port": null,
+                    "healthUrl": null,
+                    "openUrl": null,
+                    "logSource": {
+                        "type": "command",
+                        "workingDir": "/home/user/IdeaProjects/Dashboard",
+                        "startCommand": "./gradlew :shared:jvmTest",
+                        "stopCommand": null,
+                        "environment": {}
+                    },
+                    "description": null,
+                    "tags": []
                 }
             ]
         }

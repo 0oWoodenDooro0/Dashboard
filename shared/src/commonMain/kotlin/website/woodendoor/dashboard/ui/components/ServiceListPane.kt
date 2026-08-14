@@ -52,6 +52,9 @@ fun ServiceListPane(
     onEditService: (ServiceItem, String) -> Unit,
     onDeleteService: (ServiceItem) -> Unit,
     onOpenUrl: (String) -> Unit,
+    onStartService: (ServiceItem) -> Unit = {},
+    onStopService: (ServiceItem) -> Unit = {},
+    onRestartService: (ServiceItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchFilter by remember { mutableStateOf("") }
@@ -208,6 +211,7 @@ fun ServiceListPane(
                             val containerState = when (val src = service.logSource) {
                                 is LogSource.Docker -> containerStates[src.containerName]
                                 is LogSource.DockerCompose -> containerStates[src.stateKey()]
+                                is LogSource.Command -> containerStates[src.stateKey(service.id)]
                                 else -> null
                             }
 
@@ -220,6 +224,9 @@ fun ServiceListPane(
                                 onEdit = { onEditService(service, group.name) },
                                 onDelete = { onDeleteService(service) },
                                 onOpenUrl = onOpenUrl,
+                                onStart = { onStartService(service) },
+                                onStop = { onStopService(service) },
+                                onRestart = { onRestartService(service) },
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
                         }

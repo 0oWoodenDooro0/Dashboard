@@ -51,6 +51,10 @@ class LogStreamServiceTest {
             lastRequestedTail = tail
             return customLogFlow
         }
+
+        override suspend fun startContainer(nameOrId: String) {}
+        override suspend fun stopContainer(nameOrId: String) {}
+        override suspend fun restartContainer(nameOrId: String) {}
     }
 
     private class FakeDockerComposeClient : DockerComposeClient {
@@ -74,16 +78,49 @@ class LogStreamServiceTest {
             lastRequestedTail = tail
             return customLogFlow
         }
+
+        override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {}
+        override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {}
+        override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {}
     }
+
+    private class FakeProcessManager : ProcessManager {
+        var lastRequestedServiceId: String? = null
+        var lastRequestedSource: LogSource.Command? = null
+        var lastRequestedTail: Int? = null
+        var customLogFlow: Flow<String> = flowOf("process line 1", "process line 2")
+
+        override suspend fun startProcess(serviceId: String, workingDir: String, command: String, environment: Map<String, String>) {}
+        override suspend fun stopProcess(serviceId: String, stopCommand: String?, workingDir: String?, timeoutSeconds: Int) {}
+        override suspend fun restartProcess(serviceId: String, workingDir: String, command: String, stopCommand: String?, environment: Map<String, String>) {}
+        override fun isRunning(serviceId: String): Boolean = true
+        override fun getProcessState(serviceId: String): ContainerState = ContainerState.Running(status = "running")
+
+        override fun streamLogs(serviceId: String, tail: Int): Flow<String> {
+            lastRequestedServiceId = serviceId
+            lastRequestedTail = tail
+            return customLogFlow
+        }
+
+        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> {
+            lastRequestedSource = source
+            lastRequestedTail = tail
+            return customLogFlow
+        }
+    }
+
+    private lateinit var fakeProcessManager: FakeProcessManager
 
     @BeforeTest
     fun setUp() {
         tempDir = Files.createTempDirectory("log-stream-test").toFile()
         fakeDockerClient = FakeDockerClient()
         fakeDockerComposeClient = FakeDockerComposeClient()
+        fakeProcessManager = FakeProcessManager()
         logStreamService = DefaultLogStreamService(
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
+            processManager = fakeProcessManager,
             pollDelayMs = 20L
         )
     }
@@ -91,6 +128,25 @@ class LogStreamServiceTest {
     @AfterTest
     fun tearDown() {
         tempDir.deleteRecursively()
+    }
+
+    @Test
+    fun testCommandSourceDelegation() = runTest {
+        // Given Command log source
+        val commandSource = LogSource.Command(
+            workingDir = "/home/user/project",
+            startCommand = "npm run dev",
+            stopCommand = "npm run stop"
+        )
+        fakeProcessManager.customLogFlow = listOf("VITE v5.0.0 ready", "Local: http://localhost:5173/").asFlow()
+
+        // When streaming logs
+        val result = logStreamService.streamLogs(commandSource, tail = 80).toList()
+
+        // Then verify ProcessManager was invoked with correct source and tail
+        assertEquals(commandSource, fakeProcessManager.lastRequestedSource)
+        assertEquals(80, fakeProcessManager.lastRequestedTail)
+        assertEquals(listOf("VITE v5.0.0 ready", "Local: http://localhost:5173/"), result)
     }
 
     @Test

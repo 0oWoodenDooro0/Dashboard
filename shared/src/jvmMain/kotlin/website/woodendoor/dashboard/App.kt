@@ -23,6 +23,7 @@ import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.service.CliDockerComposeClient
 import website.woodendoor.dashboard.service.CliDockerClient
 import website.woodendoor.dashboard.service.DefaultLogStreamService
+import website.woodendoor.dashboard.service.DefaultProcessManager
 import website.woodendoor.dashboard.service.FileConfigRepository
 import website.woodendoor.dashboard.service.SocketPortHealthChecker
 import website.woodendoor.dashboard.ui.components.DashboardTopBar
@@ -40,15 +41,18 @@ fun App(
     viewModel: DashboardViewModel = remember {
         val dockerClient = CliDockerClient()
         val dockerComposeClient = CliDockerComposeClient()
+        val processManager = DefaultProcessManager()
         DashboardViewModel(
             configRepository = FileConfigRepository(),
             healthChecker = SocketPortHealthChecker(),
             logStreamService = DefaultLogStreamService(
                 dockerClient = dockerClient,
-                dockerComposeClient = dockerComposeClient
+                dockerComposeClient = dockerComposeClient,
+                processManager = processManager
             ),
             dockerClient = dockerClient,
-            dockerComposeClient = dockerComposeClient
+            dockerComposeClient = dockerComposeClient,
+            processManager = processManager
         )
     }
 ) {
@@ -134,6 +138,15 @@ fun App(
                     },
                     onOpenUrl = { url ->
                         PlatformUtils.openUrlInBrowser(url)
+                    },
+                    onStartService = { service ->
+                        viewModel.startService(service)
+                    },
+                    onStopService = { service ->
+                        viewModel.stopService(service)
+                    },
+                    onRestartService = { service ->
+                        viewModel.restartService(service)
                     },
                     modifier = Modifier.width(380.dp)
                 )

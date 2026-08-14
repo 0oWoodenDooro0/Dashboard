@@ -30,6 +30,7 @@ import website.woodendoor.dashboard.service.DockerClient
 import website.woodendoor.dashboard.service.DockerComposeClient
 import website.woodendoor.dashboard.service.LogStreamService
 import website.woodendoor.dashboard.service.PortHealthChecker
+import website.woodendoor.dashboard.service.ProcessManager
 
 class DashboardViewModel(
     private val configRepository: ConfigRepository,
@@ -37,6 +38,7 @@ class DashboardViewModel(
     private val logStreamService: LogStreamService,
     private val dockerClient: DockerClient,
     private val dockerComposeClient: DockerComposeClient,
+    private val processManager: ProcessManager? = null,
     coroutineScope: CoroutineScope? = null,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val maxLogBufferSize: Int = 1000
@@ -107,18 +109,10 @@ class DashboardViewModel(
     private fun startPollingTicker() {
         tickerJob?.cancel()
         tickerJob = scope.launch(defaultDispatcher) {
-            try {
-                withContext(Dispatchers.IO) {}
-            } catch (_: Exception) {}
-
             while (isActive) {
                 val intervalSeconds = _state.value.config.pollingIntervalSeconds.coerceAtLeast(1L)
                 delay(intervalSeconds * 1000L)
                 refreshHealthAndDocker()
-
-                try {
-                    withContext(Dispatchers.IO) {}
-                } catch (_: Exception) {}
             }
         }
     }
@@ -164,10 +158,10 @@ class DashboardViewModel(
             }
 
             val newContainerStates = mutableMapOf<String, ContainerState>()
-            if (isDocker) {
-                for (service in currentServices) {
-                    when (val src = service.logSource) {
-                        is LogSource.Docker -> {
+            for (service in currentServices) {
+                when (val src = service.logSource) {
+                    is LogSource.Docker -> {
+                        if (isDocker) {
                             val containerName = src.containerName
                             if (!newContainerStates.containsKey(containerName)) {
                                 try {
@@ -180,7 +174,9 @@ class DashboardViewModel(
                                 }
                             }
                         }
-                        is LogSource.DockerCompose -> {
+                    }
+                    is LogSource.DockerCompose -> {
+                        if (isDocker) {
                             val key = src.stateKey()
                             if (!newContainerStates.containsKey(key)) {
                                 try {
@@ -193,8 +189,21 @@ class DashboardViewModel(
                                 }
                             }
                         }
-                        else -> {}
                     }
+                    is LogSource.Command -> {
+                        val key = src.stateKey(service.id)
+                        if (!newContainerStates.containsKey(key) && processManager != null) {
+                            try {
+                                val state = processManager.getProcessState(service.id)
+                                newContainerStates[key] = state
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                newContainerStates[key] = ContainerState.Unknown("Error retrieving state")
+                            }
+                        }
+                    }
+                    else -> {}
                 }
             }
 
@@ -324,6 +333,14 @@ class DashboardViewModel(
             selectService(null)
         }
 
+        if (processManager?.isRunning(serviceId) == true) {
+            scope.launch(defaultDispatcher) {
+                try {
+                    processManager.stopProcess(serviceId)
+                } catch (_: Exception) {}
+            }
+        }
+
         saveConfigInternal(updatedConfig)
     }
 
@@ -344,6 +361,153 @@ class DashboardViewModel(
 
         val updatedConfig = currentConfig.copy(groups = currentConfig.groups.filterNot { it.id == groupId })
         saveConfigInternal(updatedConfig)
+    }
+
+    fun startService(service: ServiceItem) {
+        scope.launch(defaultDispatcher) {
+            when (val src = service.logSource) {
+                is LogSource.Command -> {
+                    if (processManager == null) {
+                        _state.update { it.copy(errorMessage = "Process manager is not available") }
+                        return@launch
+                    }
+                    try {
+                        processManager.startProcess(
+                            serviceId = service.id,
+                            workingDir = src.workingDir,
+                            command = src.startCommand,
+                            environment = src.environment
+                        )
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to start service ${service.name}: ${e.message}") }
+                    }
+                }
+                is LogSource.Docker -> {
+                    try {
+                        dockerClient.startContainer(src.containerName)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to start container ${src.containerName}: ${e.message}") }
+                    }
+                }
+                is LogSource.DockerCompose -> {
+                    try {
+                        dockerComposeClient.startService(src.projectDir, src.serviceName, src.composeFile)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to start compose service ${src.serviceName}: ${e.message}") }
+                    }
+                }
+                else -> {
+                    _state.update { it.copy(errorMessage = "Service ${service.name} does not support process start") }
+                }
+            }
+        }
+    }
+
+    fun stopService(service: ServiceItem) {
+        scope.launch(defaultDispatcher) {
+            when (val src = service.logSource) {
+                is LogSource.Command -> {
+                    if (processManager == null) {
+                        _state.update { it.copy(errorMessage = "Process manager is not available") }
+                        return@launch
+                    }
+                    try {
+                        processManager.stopProcess(
+                            serviceId = service.id,
+                            stopCommand = src.stopCommand,
+                            workingDir = src.workingDir
+                        )
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to stop service ${service.name}: ${e.message}") }
+                    }
+                }
+                is LogSource.Docker -> {
+                    try {
+                        dockerClient.stopContainer(src.containerName)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to stop container ${src.containerName}: ${e.message}") }
+                    }
+                }
+                is LogSource.DockerCompose -> {
+                    try {
+                        dockerComposeClient.stopService(src.projectDir, src.serviceName, src.composeFile)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to stop compose service ${src.serviceName}: ${e.message}") }
+                    }
+                }
+                else -> {
+                    _state.update { it.copy(errorMessage = "Service ${service.name} does not support process stop") }
+                }
+            }
+        }
+    }
+
+    fun restartService(service: ServiceItem) {
+        scope.launch(defaultDispatcher) {
+            when (val src = service.logSource) {
+                is LogSource.Command -> {
+                    if (processManager == null) {
+                        _state.update { it.copy(errorMessage = "Process manager is not available") }
+                        return@launch
+                    }
+                    try {
+                        processManager.restartProcess(
+                            serviceId = service.id,
+                            workingDir = src.workingDir,
+                            command = src.startCommand,
+                            stopCommand = src.stopCommand,
+                            environment = src.environment
+                        )
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to restart service ${service.name}: ${e.message}") }
+                    }
+                }
+                is LogSource.Docker -> {
+                    try {
+                        dockerClient.restartContainer(src.containerName)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to restart container ${src.containerName}: ${e.message}") }
+                    }
+                }
+                is LogSource.DockerCompose -> {
+                    try {
+                        dockerComposeClient.restartService(src.projectDir, src.serviceName, src.composeFile)
+                        refreshHealthAndDocker()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.update { it.copy(errorMessage = "Failed to restart compose service ${src.serviceName}: ${e.message}") }
+                    }
+                }
+                else -> {
+                    _state.update { it.copy(errorMessage = "Service ${service.name} does not support process restart") }
+                }
+            }
+        }
     }
 
     private fun saveConfigInternal(config: DashboardConfig) {
@@ -372,7 +536,7 @@ class DashboardViewModel(
         _state.update { it.copy(errorMessage = null) }
     }
 
-    override fun onCleared() {
+    public override fun onCleared() {
         super.onCleared()
         vmJob.cancel()
         logStreamJob?.cancel()

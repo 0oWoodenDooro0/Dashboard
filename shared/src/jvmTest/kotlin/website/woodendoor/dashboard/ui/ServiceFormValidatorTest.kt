@@ -285,5 +285,99 @@ class ServiceFormValidatorTest {
         assertEquals("compose.yaml", formState.composeFileName)
         assertEquals("Backend Services", formState.groupName)
     }
+
+    @Test
+    fun `validate with valid command inputs creates Command LogSource`() {
+        val formState = ServiceFormState(
+            name = "Command Service",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = " /home/user/app ",
+            commandStartScript = " npm run dev "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            LogSource.Command(
+                workingDir = "/home/user/app",
+                startCommand = "npm run dev",
+                stopCommand = null
+            ),
+            result.serviceItem.logSource
+        )
+    }
+
+    @Test
+    fun `validate with optional stop command preserves stopCommand`() {
+        val formState = ServiceFormState(
+            name = "Gradle Service",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/project",
+            commandStartScript = "./gradlew bootRun",
+            commandStopScript = " ./gradlew --stop "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            LogSource.Command(
+                workingDir = "/home/user/project",
+                startCommand = "./gradlew bootRun",
+                stopCommand = "./gradlew --stop"
+            ),
+            result.serviceItem.logSource
+        )
+    }
+
+    @Test
+    fun `validate fails when command working directory is blank`() {
+        val formState = ServiceFormState(
+            name = "Missing Dir Service",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "   ",
+            commandStartScript = "python main.py"
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("commandWorkingDir"))
+        assertEquals("Working directory cannot be empty for Directory Command log source", result.errors["commandWorkingDir"])
+    }
+
+    @Test
+    fun `validate fails when command start script is blank`() {
+        val formState = ServiceFormState(
+            name = "Missing Script Service",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "   "
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("commandStartScript"))
+        assertEquals("Start command cannot be empty for Directory Command log source", result.errors["commandStartScript"])
+    }
+
+    @Test
+    fun `fromServiceItem correctly maps Command LogSource`() {
+        val item = website.woodendoor.dashboard.model.ServiceItem(
+            id = "cmd-item",
+            name = "Node Backend",
+            logSource = LogSource.Command(
+                workingDir = "/apps/node-backend",
+                startCommand = "npm start",
+                stopCommand = "npm stop"
+            )
+        )
+
+        val formState = ServiceFormState.fromServiceItem(item, "Node Services")
+
+        assertEquals(LogSourceType.COMMAND, formState.logSourceType)
+        assertEquals("/apps/node-backend", formState.commandWorkingDir)
+        assertEquals("npm start", formState.commandStartScript)
+        assertEquals("npm stop", formState.commandStopScript)
+        assertEquals("Node Services", formState.groupName)
+    }
 }
 
