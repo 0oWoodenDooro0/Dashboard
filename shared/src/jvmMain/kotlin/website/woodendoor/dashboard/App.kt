@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.model.ServiceItem
+import website.woodendoor.dashboard.service.CliDockerComposeClient
 import website.woodendoor.dashboard.service.CliDockerClient
 import website.woodendoor.dashboard.service.DefaultLogStreamService
 import website.woodendoor.dashboard.service.FileConfigRepository
@@ -51,11 +52,16 @@ import website.woodendoor.dashboard.viewmodel.DashboardViewModel
 fun App(
     viewModel: DashboardViewModel = remember {
         val dockerClient = CliDockerClient()
+        val dockerComposeClient = CliDockerComposeClient()
         DashboardViewModel(
             configRepository = FileConfigRepository(),
             healthChecker = SocketPortHealthChecker(),
-            logStreamService = DefaultLogStreamService(dockerClient = dockerClient),
-            dockerClient = dockerClient
+            logStreamService = DefaultLogStreamService(
+                dockerClient = dockerClient,
+                dockerComposeClient = dockerComposeClient
+            ),
+            dockerClient = dockerClient,
+            dockerComposeClient = dockerComposeClient
         )
     }
 ) {

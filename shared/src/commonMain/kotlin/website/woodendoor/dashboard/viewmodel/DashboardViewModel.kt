@@ -24,8 +24,10 @@ import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
+import website.woodendoor.dashboard.model.stateKey
 import website.woodendoor.dashboard.service.ConfigRepository
 import website.woodendoor.dashboard.service.DockerClient
+import website.woodendoor.dashboard.service.DockerComposeClient
 import website.woodendoor.dashboard.service.LogStreamService
 import website.woodendoor.dashboard.service.PortHealthChecker
 
@@ -34,6 +36,7 @@ class DashboardViewModel(
     private val healthChecker: PortHealthChecker,
     private val logStreamService: LogStreamService,
     private val dockerClient: DockerClient,
+    private val dockerComposeClient: DockerComposeClient,
     coroutineScope: CoroutineScope? = null,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val maxLogBufferSize: Int = 1000
@@ -163,18 +166,34 @@ class DashboardViewModel(
             val newContainerStates = mutableMapOf<String, ContainerState>()
             if (isDocker) {
                 for (service in currentServices) {
-                    if (service.logSource is LogSource.Docker) {
-                        val containerName = service.logSource.containerName
-                        if (!newContainerStates.containsKey(containerName)) {
-                            try {
-                                val state = dockerClient.getContainerState(containerName)
-                                newContainerStates[containerName] = state
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (_: Exception) {
-                                newContainerStates[containerName] = ContainerState.Unknown("Error retrieving state")
+                    when (val src = service.logSource) {
+                        is LogSource.Docker -> {
+                            val containerName = src.containerName
+                            if (!newContainerStates.containsKey(containerName)) {
+                                try {
+                                    val state = dockerClient.getContainerState(containerName)
+                                    newContainerStates[containerName] = state
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    newContainerStates[containerName] = ContainerState.Unknown("Error retrieving state")
+                                }
                             }
                         }
+                        is LogSource.DockerCompose -> {
+                            val key = src.stateKey()
+                            if (!newContainerStates.containsKey(key)) {
+                                try {
+                                    val state = dockerComposeClient.getServiceState(src.projectDir, src.serviceName, src.composeFile)
+                                    newContainerStates[key] = state
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    newContainerStates[key] = ContainerState.Unknown("Error retrieving state")
+                                }
+                            }
+                        }
+                        else -> {}
                     }
                 }
             }

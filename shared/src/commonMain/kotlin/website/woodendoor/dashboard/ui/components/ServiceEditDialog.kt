@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,6 +56,7 @@ import website.woodendoor.dashboard.ui.util.LogSourceType
 import website.woodendoor.dashboard.ui.util.ServiceFormState
 import website.woodendoor.dashboard.ui.util.ServiceFormValidator
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ServiceEditDialog(
     initialService: ServiceItem?,
@@ -203,9 +206,9 @@ fun ServiceEditDialog(
                             color = TextSecondary
                         )
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             LogSourceType.entries.forEach { type ->
                                 Row(
@@ -213,7 +216,7 @@ fun ServiceEditDialog(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
                                         .clickable { formState = formState.copy(logSourceType = type) }
-                                        .padding(end = 6.dp)
+                                        .padding(end = 4.dp)
                                 ) {
                                     RadioButton(
                                         selected = formState.logSourceType == type,
@@ -240,6 +243,30 @@ fun ServiceEditDialog(
                                     onValueChange = { formState = formState.copy(dockerContainerName = it) },
                                     placeholder = "e.g. backend-api",
                                     errorMessage = errors["dockerContainerName"]
+                                )
+                            }
+                            LogSourceType.DOCKER_COMPOSE -> {
+                                FormField(
+                                    label = "Project Folder / Directory *",
+                                    value = formState.composeProjectDir,
+                                    onValueChange = { formState = formState.copy(composeProjectDir = it) },
+                                    placeholder = "e.g. /home/user/my-project or ./backend",
+                                    errorMessage = errors["composeProjectDir"]
+                                )
+
+                                FormField(
+                                    label = "Compose Service Name *",
+                                    value = formState.composeServiceName,
+                                    onValueChange = { formState = formState.copy(composeServiceName = it) },
+                                    placeholder = "e.g. backend, web, api",
+                                    errorMessage = errors["composeServiceName"]
+                                )
+
+                                FormField(
+                                    label = "Custom Compose File (Optional)",
+                                    value = formState.composeFileName,
+                                    onValueChange = { formState = formState.copy(composeFileName = it) },
+                                    placeholder = "e.g. docker-compose.prod.yml (optional)"
                                 )
                             }
                             LogSourceType.LOCAL_FILE -> {
@@ -324,12 +351,11 @@ fun FormField(
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
-            placeholder = { Text(placeholder, fontSize = 12.sp, color = TextMuted) },
+            placeholder = { Text(placeholder, fontSize = 13.sp, color = TextMuted) },
             singleLine = true,
             isError = errorMessage != null,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = TextPrimary),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(6.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = DarkSurfaceElevated,

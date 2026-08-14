@@ -43,6 +43,7 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.stateKey
 import website.woodendoor.dashboard.ui.theme.DarkBackground
 import website.woodendoor.dashboard.ui.theme.DarkBorder
 import website.woodendoor.dashboard.ui.theme.DarkSurface
@@ -136,11 +137,10 @@ fun ServiceListPane(
             OutlinedTextField(
                 value = searchFilter,
                 onValueChange = { searchFilter = it },
-                placeholder = { Text("Filter services...", fontSize = 12.sp, color = TextMuted) },
+                placeholder = { Text("Filter services...", fontSize = 13.sp, color = TextMuted) },
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = TextPrimary),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = DarkSurface,
@@ -200,6 +200,7 @@ fun ServiceListPane(
                         items(group.services, key = { it.id }) { service ->
                             val containerState = when (val src = service.logSource) {
                                 is LogSource.Docker -> containerStates[src.containerName]
+                                is LogSource.DockerCompose -> containerStates[src.stateKey()]
                                 else -> null
                             }
 

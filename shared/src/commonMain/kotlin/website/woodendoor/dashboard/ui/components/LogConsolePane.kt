@@ -265,11 +265,10 @@ fun ConsoleControlBar(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Filter logs (regex/text)...", fontSize = 11.sp, color = TextMuted) },
+                    placeholder = { Text("Filter logs (regex/text)...", fontSize = 12.sp, color = TextMuted) },
                     singleLine = true,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, color = TextPrimary),
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(6.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = DarkSurface,
@@ -423,6 +422,7 @@ fun highlightLogLine(line: String, query: String): AnnotatedString {
 fun describeLogSource(source: LogSource): String {
     return when (source) {
         is LogSource.Docker -> "Docker: ${source.containerName}"
+        is LogSource.DockerCompose -> "Compose: ${source.serviceName} (${source.projectDir})"
         is LogSource.LocalFile -> "File: ${source.path}"
         LogSource.None -> "No Log Source"
     }
