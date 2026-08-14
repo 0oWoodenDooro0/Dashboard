@@ -124,6 +124,7 @@ fun App(
                     serviceStatuses = state.serviceStatuses,
                     containerStates = state.containerStates,
                     selectedServiceId = state.selectedServiceId,
+                    operatingServiceIds = state.operatingServiceIds,
                     onSelectService = { serviceId ->
                         viewModel.selectService(serviceId)
                     },

@@ -172,6 +172,12 @@ class DashboardViewModelTest {
         var isDockerAvailableResult: Boolean = true
     ) : DockerClient {
         val containerStates = mutableMapOf<String, ContainerState>()
+        var onStartContainer: (suspend (String) -> Unit)? = null
+        var onStopContainer: (suspend (String) -> Unit)? = null
+        var onRestartContainer: (suspend (String) -> Unit)? = null
+        var shouldThrowOnStart: Boolean = false
+        var shouldThrowOnStop: Boolean = false
+        var shouldThrowOnRestart: Boolean = false
 
         override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
 
@@ -184,14 +190,20 @@ class DashboardViewModelTest {
         override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = flow {}
 
         override suspend fun startContainer(nameOrId: String) {
+            if (shouldThrowOnStart) throw RuntimeException("Failed to start container $nameOrId")
+            onStartContainer?.invoke(nameOrId)
             containerStates[nameOrId] = ContainerState.Running(status = "running")
         }
 
         override suspend fun stopContainer(nameOrId: String) {
+            if (shouldThrowOnStop) throw RuntimeException("Failed to stop container $nameOrId")
+            onStopContainer?.invoke(nameOrId)
             containerStates[nameOrId] = ContainerState.Exited(exitCode = 0, status = "exited")
         }
 
         override suspend fun restartContainer(nameOrId: String) {
+            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart container $nameOrId")
+            onRestartContainer?.invoke(nameOrId)
             containerStates[nameOrId] = ContainerState.Running(status = "running")
         }
     }
@@ -201,6 +213,12 @@ class DashboardViewModelTest {
     ) : website.woodendoor.dashboard.service.DockerComposeClient {
         val composeStates = mutableMapOf<String, ContainerState>()
         var customLogFlow: Flow<String> = flow {}
+        var onStartService: (suspend (String) -> Unit)? = null
+        var onStopService: (suspend (String) -> Unit)? = null
+        var onRestartService: (suspend (String) -> Unit)? = null
+        var shouldThrowOnStart: Boolean = false
+        var shouldThrowOnStop: Boolean = false
+        var shouldThrowOnRestart: Boolean = false
 
         override suspend fun isComposeAvailable(): Boolean = isComposeAvailableResult
 
@@ -214,16 +232,22 @@ class DashboardViewModelTest {
         override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> = customLogFlow
 
         override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnStart) throw RuntimeException("Failed to start compose service $serviceName")
+            onStartService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Running(status = "running")
         }
 
         override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnStop) throw RuntimeException("Failed to stop compose service $serviceName")
+            onStopService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Exited(exitCode = 0, status = "exited")
         }
 
         override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart compose service $serviceName")
+            onRestartService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Running(status = "running")
         }
@@ -236,20 +260,32 @@ class DashboardViewModelTest {
         val stopProcessCalls = mutableListOf<String>()
         val restartProcessCalls = mutableListOf<Triple<String, String, String>>()
         val customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
+        var onStartProcess: (suspend (String) -> Unit)? = null
+        var onStopProcess: (suspend (String) -> Unit)? = null
+        var onRestartProcess: (suspend (String) -> Unit)? = null
+        var shouldThrowOnStart: Boolean = false
+        var shouldThrowOnStop: Boolean = false
+        var shouldThrowOnRestart: Boolean = false
 
         override suspend fun startProcess(serviceId: String, workingDir: String, command: String, environment: Map<String, String>) {
+            if (shouldThrowOnStart) throw RuntimeException("Failed to start process $serviceId")
+            onStartProcess?.invoke(serviceId)
             startProcessCalls.add(Triple(serviceId, workingDir, command))
             runningProcesses.add(serviceId)
             processStates[serviceId] = ContainerState.Running(status = "running")
         }
 
         override suspend fun stopProcess(serviceId: String, stopCommand: String?, workingDir: String?, timeoutSeconds: Int) {
+            if (shouldThrowOnStop) throw RuntimeException("Failed to stop process $serviceId")
+            onStopProcess?.invoke(serviceId)
             stopProcessCalls.add(serviceId)
             runningProcesses.remove(serviceId)
             processStates[serviceId] = ContainerState.Exited(exitCode = 0, status = "stopped")
         }
 
         override suspend fun restartProcess(serviceId: String, workingDir: String, command: String, stopCommand: String?, environment: Map<String, String>) {
+            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart process $serviceId")
+            onRestartProcess?.invoke(serviceId)
             restartProcessCalls.add(Triple(serviceId, workingDir, command))
             runningProcesses.add(serviceId)
             processStates[serviceId] = ContainerState.Running(status = "running")
@@ -1076,4 +1112,107 @@ class DashboardViewModelTest {
 
         assertEquals(listOf("server restarted successfully"), viewModel.state.value.logs)
     }
+
+    @Test
+    fun startService_tracksOperatingServiceIdsDuringExecution() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        var wasOperatingDuringExecution = false
+        fakeDockerClient.onStartContainer = { containerName ->
+            wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
+        }
+
+        viewModel.startService(sampleService2)
+        runCurrent()
+
+        assertTrue(wasOperatingDuringExecution, "Service ID should be present in operatingServiceIds during start execution")
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be empty after start completes")
+    }
+
+    @Test
+    fun stopService_tracksOperatingServiceIdsDuringExecution() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        var wasOperatingDuringExecution = false
+        fakeDockerClient.onStopContainer = { containerName ->
+            wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
+        }
+
+        viewModel.stopService(sampleService2)
+        runCurrent()
+
+        assertTrue(wasOperatingDuringExecution, "Service ID should be present in operatingServiceIds during stop execution")
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be empty after stop completes")
+    }
+
+    @Test
+    fun restartService_tracksOperatingServiceIdsDuringExecution() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        var wasOperatingDuringExecution = false
+        fakeDockerClient.onRestartContainer = { containerName ->
+            wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
+        }
+
+        viewModel.restartService(sampleService2)
+        runCurrent()
+
+        assertTrue(wasOperatingDuringExecution, "Service ID should be present in operatingServiceIds during restart execution")
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be empty after restart completes")
+    }
+
+    @Test
+    fun startService_clearsOperatingServiceIdsOnError() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        fakeDockerClient.shouldThrowOnStart = true
+
+        viewModel.startService(sampleService2)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be cleared on error")
+        assertNotNull(viewModel.state.value.errorMessage)
+        assertTrue(viewModel.state.value.errorMessage?.contains("Failed to start container") == true)
+    }
+
+    @Test
+    fun stopService_clearsOperatingServiceIdsOnError() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        fakeDockerClient.shouldThrowOnStop = true
+
+        viewModel.stopService(sampleService2)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be cleared on error")
+        assertNotNull(viewModel.state.value.errorMessage)
+        assertTrue(viewModel.state.value.errorMessage?.contains("Failed to stop container") == true)
+    }
+
+    @Test
+    fun restartService_clearsOperatingServiceIdsOnError() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        fakeDockerClient.shouldThrowOnRestart = true
+
+        viewModel.restartService(sampleService2)
+        runCurrent()
+
+        assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be cleared on error")
+        assertNotNull(viewModel.state.value.errorMessage)
+        assertTrue(viewModel.state.value.errorMessage?.contains("Failed to restart container") == true)
+    }
 }
+

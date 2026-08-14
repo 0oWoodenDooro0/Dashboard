@@ -397,4 +397,115 @@ class DockerComposeClientTest {
 
         assertTrue(wasCleanedUp.get(), "Compose process stream should be cancelled and cleaned up")
     }
+
+    @Test
+    fun startService_triesStartFirst_andSucceeds() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "start", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Started\n", stderr = "")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        client.startService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun startService_whenStartFails_fallsBackToUpDetached() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                if (cmd.contains("start")) {
+                    ProcessResult(exitCode = 1, stdout = "", stderr = "No such container")
+                } else {
+                    assertEquals(
+                        listOf("docker", "compose", "--project-directory", "/apps/myproject", "up", "-d", "web"),
+                        cmd
+                    )
+                    ProcessResult(exitCode = 0, stdout = "Container web Created and Started\n", stderr = "")
+                }
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        client.startService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(2, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun startService_whenBothFail_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Compose start failed")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.startService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Compose start failed") == true)
+    }
+
+    @Test
+    fun stopService_callsDockerComposeStop() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "stop", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Stopped\n", stderr = "")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        client.stopService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun stopService_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Failed to stop service")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.stopService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Failed to stop service") == true)
+    }
+
+    @Test
+    fun restartService_callsDockerComposeRestart() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "restart", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Restarted\n", stderr = "")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        client.restartService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun restartService_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Failed to restart service")
+            }
+        }
+        val client = CliDockerComposeClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.restartService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Failed to restart service") == true)
+    }
 }
+
