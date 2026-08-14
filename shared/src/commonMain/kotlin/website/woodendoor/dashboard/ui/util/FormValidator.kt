@@ -4,11 +4,10 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
 
 enum class LogSourceType(val displayName: String) {
-    NONE("None"),
+    COMMAND("Directory Command"),
     DOCKER("Docker Container"),
     DOCKER_COMPOSE("Docker Compose"),
-    LOCAL_FILE("Local File"),
-    COMMAND("Directory Command (npm / py / gradle)")
+    LOCAL_FILE("Local File")
 }
 
 data class ServiceFormState(
@@ -21,7 +20,7 @@ data class ServiceFormState(
     val healthUrl: String = "",
     val description: String = "",
     val tags: String = "",
-    val logSourceType: LogSourceType = LogSourceType.NONE,
+    val logSourceType: LogSourceType = LogSourceType.COMMAND,
     val dockerContainerName: String = "",
     val localFilePath: String = "",
     val composeProjectDir: String = "",
@@ -100,7 +99,7 @@ data class ServiceFormState(
                     healthUrl = item.healthUrl ?: "",
                     description = item.description ?: "",
                     tags = item.tags.joinToString(", "),
-                    logSourceType = LogSourceType.NONE
+                    logSourceType = LogSourceType.COMMAND
                 )
             }
         }
@@ -208,7 +207,6 @@ object ServiceFormValidator {
                     LogSource.LocalFile(filePath)
                 }
             }
-            LogSourceType.NONE -> LogSource.None
         }
 
         if (errors.isNotEmpty()) {

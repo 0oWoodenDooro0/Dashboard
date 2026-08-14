@@ -1,5 +1,6 @@
 package website.woodendoor.dashboard.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
@@ -74,87 +77,46 @@ fun ServiceEditDialog(
                 modifier = Modifier
                     .width(520.dp)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Service Name
+                // Section 1: Basic Information
                 FormField(
                     label = "Service Name *",
                     value = formState.name,
                     onValueChange = { formState = formState.copy(name = it) },
-                    placeholder = "e.g. Backend API",
+                    placeholder = "Backend API",
                     errorMessage = errors["name"]
                 )
 
-                // Group Name
                 FormField(
                     label = "Group Name",
                     value = formState.groupName,
                     onValueChange = { formState = formState.copy(groupName = it) },
-                    placeholder = "e.g. Web Applications, Databases"
+                    placeholder = "Web Applications"
                 )
 
-                // Host & Port Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    FormField(
-                        label = "Host",
-                        value = formState.host,
-                        onValueChange = { formState = formState.copy(host = it) },
-                        placeholder = "127.0.0.1",
-                        modifier = Modifier.weight(1.5f)
-                    )
-
-                    FormField(
-                        label = "Port (Optional)",
-                        value = formState.port,
-                        onValueChange = { formState = formState.copy(port = it) },
-                        placeholder = "8000",
-                        errorMessage = errors["port"],
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                // Open URL & Health URL
-                FormField(
-                    label = "Open URL (Browser Shortcut)",
-                    value = formState.openUrl,
-                    onValueChange = { formState = formState.copy(openUrl = it) },
-                    placeholder = "http://localhost:8000"
-                )
-
-                FormField(
-                    label = "Health Check URL (Optional)",
-                    value = formState.healthUrl,
-                    onValueChange = { formState = formState.copy(healthUrl = it) },
-                    placeholder = "http://localhost:8000/health"
-                )
-
-                // Description
                 FormField(
                     label = "Description",
                     value = formState.description,
                     onValueChange = { formState = formState.copy(description = it) },
-                    placeholder = "Brief service description"
+                    placeholder = "Service description"
                 )
 
-                // Tags
                 FormField(
                     label = "Tags (comma-separated)",
                     value = formState.tags,
                     onValueChange = { formState = formState.copy(tags = it) },
-                    placeholder = "backend, api, python"
+                    placeholder = "backend, api"
                 )
 
-                // Log Source Selector
+                // Section 2: Runtime Configuration (Default: Directory Command)
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Log Stream Source",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Runtime Configuration",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     FlowRow(
@@ -187,12 +149,36 @@ fun ServiceEditDialog(
                     }
 
                     when (formState.logSourceType) {
+                        LogSourceType.COMMAND -> {
+                            FormField(
+                                label = "Working Directory *",
+                                value = formState.commandWorkingDir,
+                                onValueChange = { formState = formState.copy(commandWorkingDir = it) },
+                                placeholder = "/path/to/project",
+                                errorMessage = errors["commandWorkingDir"]
+                            )
+
+                            FormField(
+                                label = "Start Command *",
+                                value = formState.commandStartScript,
+                                onValueChange = { formState = formState.copy(commandStartScript = it) },
+                                placeholder = "npm run dev",
+                                errorMessage = errors["commandStartScript"]
+                            )
+
+                            FormField(
+                                label = "Stop Command (Optional)",
+                                value = formState.commandStopScript,
+                                onValueChange = { formState = formState.copy(commandStopScript = it) },
+                                placeholder = "npm run stop"
+                            )
+                        }
                         LogSourceType.DOCKER -> {
                             FormField(
                                 label = "Docker Container Name *",
                                 value = formState.dockerContainerName,
                                 onValueChange = { formState = formState.copy(dockerContainerName = it) },
-                                placeholder = "e.g. backend-api",
+                                placeholder = "backend-api",
                                 errorMessage = errors["dockerContainerName"]
                             )
                         }
@@ -201,7 +187,7 @@ fun ServiceEditDialog(
                                 label = "Project Folder / Directory *",
                                 value = formState.composeProjectDir,
                                 onValueChange = { formState = formState.copy(composeProjectDir = it) },
-                                placeholder = "e.g. /home/user/my-project or ./backend",
+                                placeholder = "/path/to/project",
                                 errorMessage = errors["composeProjectDir"]
                             )
 
@@ -209,7 +195,7 @@ fun ServiceEditDialog(
                                 label = "Compose Service Name *",
                                 value = formState.composeServiceName,
                                 onValueChange = { formState = formState.copy(composeServiceName = it) },
-                                placeholder = "e.g. backend, web, api",
+                                placeholder = "backend",
                                 errorMessage = errors["composeServiceName"]
                             )
 
@@ -217,31 +203,7 @@ fun ServiceEditDialog(
                                 label = "Custom Compose File (Optional)",
                                 value = formState.composeFileName,
                                 onValueChange = { formState = formState.copy(composeFileName = it) },
-                                placeholder = "e.g. docker-compose.prod.yml (optional)"
-                            )
-                        }
-                        LogSourceType.COMMAND -> {
-                            FormField(
-                                label = "Working Directory *",
-                                value = formState.commandWorkingDir,
-                                onValueChange = { formState = formState.copy(commandWorkingDir = it) },
-                                placeholder = "e.g. /home/user/project or ./frontend",
-                                errorMessage = errors["commandWorkingDir"]
-                            )
-
-                            FormField(
-                                label = "Start Command *",
-                                value = formState.commandStartScript,
-                                onValueChange = { formState = formState.copy(commandStartScript = it) },
-                                placeholder = "e.g. npm run dev, python app.py, ./gradlew bootRun",
-                                errorMessage = errors["commandStartScript"]
-                            )
-
-                            FormField(
-                                label = "Stop Command (Optional)",
-                                value = formState.commandStopScript,
-                                onValueChange = { formState = formState.copy(commandStopScript = it) },
-                                placeholder = "e.g. npm run stop (optional, defaults to process tree kill)"
+                                placeholder = "docker-compose.prod.yml"
                             )
                         }
                         LogSourceType.LOCAL_FILE -> {
@@ -249,11 +211,69 @@ fun ServiceEditDialog(
                                 label = "Local Log File Path *",
                                 value = formState.localFilePath,
                                 onValueChange = { formState = formState.copy(localFilePath = it) },
-                                placeholder = "e.g. /var/log/app.log",
+                                placeholder = "/var/log/app.log",
                                 errorMessage = errors["localFilePath"]
                             )
                         }
-                        LogSourceType.NONE -> {}
+                    }
+                }
+
+                // Section 3: Network & Web Endpoints (Optional)
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.small,
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Network & Web Endpoints (Optional)",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            FormField(
+                                label = "Host",
+                                value = formState.host,
+                                onValueChange = { formState = formState.copy(host = it) },
+                                placeholder = "127.0.0.1",
+                                modifier = Modifier.weight(1.5f)
+                            )
+
+                            FormField(
+                                label = "Port",
+                                value = formState.port,
+                                onValueChange = { formState = formState.copy(port = it) },
+                                placeholder = "8000",
+                                errorMessage = errors["port"],
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        FormField(
+                            label = "Open URL (Browser Shortcut)",
+                            value = formState.openUrl,
+                            onValueChange = { formState = formState.copy(openUrl = it) },
+                            placeholder = "http://localhost:8000"
+                        )
+
+                        FormField(
+                            label = "Health Check URL",
+                            value = formState.healthUrl,
+                            onValueChange = { formState = formState.copy(healthUrl = it) },
+                            placeholder = "http://localhost:8000/health"
+                        )
                     }
                 }
             }
