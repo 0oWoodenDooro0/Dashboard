@@ -90,7 +90,7 @@ class DockerComposeClientTest {
         val fakeExecutor = FakeProcessExecutor().apply {
             executeHandler = { cmd ->
                 assertEquals(
-                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "ps", "--format", "json", "web"),
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "ps", "-a", "--format", "json", "web"),
                     cmd
                 )
                 ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
@@ -221,7 +221,7 @@ class DockerComposeClientTest {
         val fakeExecutor = FakeProcessExecutor().apply {
             executeHandler = { cmd ->
                 assertEquals(
-                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/apps/prod/docker-compose.prod.yml", "ps", "--format", "json", "web"),
+                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/apps/prod/docker-compose.prod.yml", "ps", "-a", "--format", "json", "web"),
                     cmd
                 )
                 ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
@@ -244,7 +244,7 @@ class DockerComposeClientTest {
         val fakeExecutor = FakeProcessExecutor().apply {
             executeHandler = { cmd ->
                 assertEquals(
-                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/opt/configs/compose.yml", "ps", "--format", "json", "web"),
+                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/opt/configs/compose.yml", "ps", "-a", "--format", "json", "web"),
                     cmd
                 )
                 ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")

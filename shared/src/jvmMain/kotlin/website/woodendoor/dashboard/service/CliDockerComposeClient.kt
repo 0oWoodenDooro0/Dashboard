@@ -61,7 +61,7 @@ class CliDockerComposeClient(
         val cmd = buildComposeCommand(
             projectDir = projectDir,
             composeFile = composeFile,
-            subcommandAndArgs = listOf("ps", "--format", "json", serviceName)
+            subcommandAndArgs = listOf("ps", "-a", "--format", "json", serviceName)
         )
         val result = executor.execute(cmd)
         if (result.exitCode != 0) {
