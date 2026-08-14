@@ -8,12 +8,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import website.woodendoor.dashboard.model.ContainerState
@@ -28,19 +28,71 @@ class DefaultProcessManager(
     private val managerJob = SupervisorJob()
     private val scope = CoroutineScope(managerJob + ioDispatcher)
 
+    private data class LogEntry(
+        val seq: Long,
+        val text: String,
+        val isEndOfStream: Boolean = false
+    )
+
+    private class LogBuffer(private val capacity: Int) {
+        private val buffer = ArrayDeque<String>()
+        var totalLines: Long = 0L
+            private set
+
+        @Synchronized
+        fun add(line: String): Long {
+            if (buffer.size >= capacity) {
+                buffer.removeFirst()
+            }
+            buffer.addLast(line)
+            totalLines++
+            return totalLines
+        }
+
+        @Synchronized
+        fun getTail(tail: Int): Pair<List<String>, Long> {
+            if (tail <= 0) return Pair(emptyList(), totalLines)
+            val count = minOf(tail, buffer.size)
+            val start = buffer.size - count
+            val snapshot = ArrayList<String>(count)
+            for (i in start until buffer.size) {
+                snapshot.add(buffer[i])
+            }
+            return Pair(snapshot, totalLines)
+        }
+
+        @Synchronized
+        fun getLinesSince(lastSeq: Long): Pair<List<String>, Long> {
+            if (totalLines <= lastSeq) return Pair(emptyList(), totalLines)
+            val availableStartSeq = totalLines - buffer.size
+            val effectiveStartSeq = maxOf(lastSeq, availableStartSeq)
+            val skip = (effectiveStartSeq - availableStartSeq).toInt()
+            val newLines = ArrayList<String>(buffer.size - skip)
+            for (i in skip until buffer.size) {
+                newLines.add(buffer[i])
+            }
+            return Pair(newLines, totalLines)
+        }
+
+        @Synchronized
+        fun hasUnemittedLogs(lastSeq: Long): Boolean = totalLines > lastSeq
+    }
+
     private data class ProcessInstance(
         val serviceId: String,
         val process: Process,
         val workingDir: String,
         val command: String,
         val stopCommand: String?,
-        val logs: MutableList<String> = mutableListOf(),
+        val logBuffer: LogBuffer,
+        val logFlow: MutableSharedFlow<LogEntry>,
         val logJob: Job
     )
 
     private val activeProcesses = ConcurrentHashMap<String, ProcessInstance>()
     private val historyStates = ConcurrentHashMap<String, ContainerState>()
-    private val historyLogs = ConcurrentHashMap<String, MutableList<String>>()
+    private val historyLogBuffers = ConcurrentHashMap<String, LogBuffer>()
+    private val historyLogFlows = ConcurrentHashMap<String, MutableSharedFlow<LogEntry>>()
     private val historySources = ConcurrentHashMap<String, LogSource.Command>()
 
     private fun isWindows(): Boolean =
@@ -101,51 +153,55 @@ class DefaultProcessManager(
                 throw e
             }
 
-            val logs = historyLogs.computeIfAbsent(serviceId) { mutableListOf() }
+            val logBuffer = historyLogBuffers.computeIfAbsent(serviceId) { LogBuffer(maxLogBufferSize) }
+            val logFlow = MutableSharedFlow<LogEntry>(
+                replay = 1,
+                extraBufferCapacity = 65536,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
+            historyLogFlows[serviceId] = logFlow
             historyStates[serviceId] = ContainerState.Running("running")
 
             val logJob = scope.launch {
+                var exitCode = -1
                 try {
                     process.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
                         var line: String? = null
                         while (reader.readLine().also { line = it } != null) {
-                            val logLine = line!!
-                            synchronized(logs) {
-                                logs.add(logLine)
-                                if (logs.size > maxLogBufferSize) {
-                                    logs.removeAt(0)
-                                }
-                            }
+                            val text = line!!
+                            val seq = logBuffer.add(text)
+                            logFlow.tryEmit(LogEntry(seq = seq, text = text))
                         }
                     }
+                    exitCode = try {
+                        process.waitFor()
+                    } catch (_: Exception) {
+                        -1
+                    }
                 } catch (_: Exception) {
+                } finally {
+                    historyStates[serviceId] = ContainerState.Exited(
+                        exitCode = exitCode,
+                        status = "exited with code $exitCode"
+                    )
+                    activeProcesses.remove(serviceId)
+                    logFlow.tryEmit(LogEntry(seq = logBuffer.totalLines, text = "", isEndOfStream = true))
                 }
-
-            val exitCode = try {
-                process.waitFor()
-            } catch (_: Exception) {
-                -1
             }
 
-            historyStates[serviceId] = ContainerState.Exited(
-                exitCode = exitCode,
-                status = "exited with code $exitCode"
+            val instance = ProcessInstance(
+                serviceId = serviceId,
+                process = process,
+                workingDir = workingDir,
+                command = command,
+                stopCommand = null,
+                logBuffer = logBuffer,
+                logFlow = logFlow,
+                logJob = logJob
             )
-            activeProcesses.remove(serviceId)
+
+            activeProcesses[serviceId] = instance
         }
-
-        val instance = ProcessInstance(
-            serviceId = serviceId,
-            process = process,
-            workingDir = workingDir,
-            command = command,
-            stopCommand = null,
-            logs = logs,
-            logJob = logJob
-        )
-
-        activeProcesses[serviceId] = instance
-    }
     }
 
     override suspend fun stopProcess(
@@ -193,6 +249,9 @@ class DefaultProcessManager(
 
             historyStates[serviceId] = ContainerState.Exited(exitCode = exitCode, status = "stopped")
             activeProcesses.remove(serviceId)
+            historyLogFlows[serviceId]?.tryEmit(
+                LogEntry(seq = historyLogBuffers[serviceId]?.totalLines ?: 0L, text = "", isEndOfStream = true)
+            )
         }
     }
 
@@ -231,50 +290,25 @@ class DefaultProcessManager(
     }
 
     override fun streamLogs(serviceId: String, tail: Int): Flow<String> = flow {
-        var lastEmittedIndex = 0
-        val initialInstance = activeProcesses[serviceId]
-        val initialLogs = historyLogs[serviceId] ?: initialInstance?.logs
+        val logBuffer = historyLogBuffers[serviceId] ?: activeProcesses[serviceId]?.logBuffer
+        val liveFlow = historyLogFlows[serviceId]
 
-        if (initialLogs != null) {
-            val initial = synchronized(initialLogs) {
-                val start = if (tail > 0) (initialLogs.size - tail).coerceAtLeast(0) else initialLogs.size
-                lastEmittedIndex = initialLogs.size
-                initialLogs.subList(start, initialLogs.size).toList()
-            }
-            for (line in initial) {
+        var lastEmittedSeq = 0L
+        if (logBuffer != null) {
+            val (initialLines, currentSeq) = logBuffer.getTail(tail)
+            lastEmittedSeq = currentSeq
+            for (line in initialLines) {
                 emit(line)
             }
         }
 
-        while (currentCoroutineContext().isActive) {
-            val currentInstance = activeProcesses[serviceId]
-            val currentLogs = historyLogs[serviceId] ?: currentInstance?.logs
-
-            if (currentLogs != null) {
-                val newLines = synchronized(currentLogs) {
-                    if (currentLogs.size > lastEmittedIndex) {
-                        val slice = currentLogs.subList(lastEmittedIndex, currentLogs.size).toList()
-                        lastEmittedIndex = currentLogs.size
-                        slice
-                    } else {
-                        emptyList()
-                    }
-                }
-                for (line in newLines) {
-                    emit(line)
+        if (liveFlow != null) {
+            liveFlow.takeWhile { !it.isEndOfStream }.collect { entry ->
+                if (entry.seq > lastEmittedSeq) {
+                    lastEmittedSeq = entry.seq
+                    emit(entry.text)
                 }
             }
-
-            val isStillProcessing = currentInstance != null &&
-                (currentInstance.process.isAlive || currentInstance.logJob.isActive)
-
-            val hasUnemittedLogs = currentLogs != null && synchronized(currentLogs) { currentLogs.size > lastEmittedIndex }
-
-            if (!isStillProcessing && !hasUnemittedLogs) {
-                break
-            }
-
-            delay(pollIntervalMs)
         }
     }.flowOn(ioDispatcher)
 
@@ -283,7 +317,7 @@ class DefaultProcessManager(
             it.workingDir == source.workingDir && it.command == source.startCommand
         }?.serviceId ?: historySources.entries.find { (_, src) ->
             src.workingDir == source.workingDir && src.startCommand == source.startCommand
-        }?.key ?: historyLogs.keys.firstOrNull()
+        }?.key ?: historyLogBuffers.keys.firstOrNull()
 
         if (targetServiceId != null) {
             streamLogs(targetServiceId, tail).collect { line ->

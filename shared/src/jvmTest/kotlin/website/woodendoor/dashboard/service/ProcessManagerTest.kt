@@ -229,4 +229,85 @@ class ProcessManagerTest {
             assertTrue(logs.any { it.contains("hello from source") })
         }
     }
+
+    @Test
+    fun testStreamLogsContinuesAfterLogBufferOverflow() = runTest {
+        withContext(Dispatchers.Default) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+            val cmd = if (isWindows) {
+                (1..15).joinToString(" & ") { "echo line $it" }
+            } else {
+                (1..15).joinToString("; ") { "echo 'line $it'" }
+            }
+
+            val bufferSize = 5
+            val smallBufferManager = DefaultProcessManager(
+                maxLogBufferSize = bufferSize,
+                pollIntervalMs = 10L
+            )
+
+            val serviceId = "overflow-service"
+            smallBufferManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd
+            )
+
+            val flow = smallBufferManager.streamLogs(serviceId = serviceId, tail = 0)
+            val logs = withTimeout(5000) {
+                flow.toList()
+            }
+
+            assertTrue(
+                logs.any { it.contains("line 15") },
+                "Should have received line 15 even after buffer overflowed size $bufferSize. Received: $logs"
+            )
+            assertTrue(
+                logs.any { it.contains("line 6") },
+                "Should have received line 6 after buffer reached initial capacity 5. Received: $logs"
+            )
+        }
+    }
+
+    @Test
+    fun testStreamLogsWithInitialTailAfterOverflow() = runTest {
+        withContext(Dispatchers.Default) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+            val cmd = if (isWindows) {
+                (1..20).joinToString(" & ") { "echo line $it" }
+            } else {
+                (1..20).joinToString("; ") { "echo 'line $it'" }
+            }
+
+            val bufferSize = 5
+            val smallBufferManager = DefaultProcessManager(
+                maxLogBufferSize = bufferSize,
+                pollIntervalMs = 10L
+            )
+
+            val serviceId = "tail-overflow-service"
+            smallBufferManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd
+            )
+
+            var attempts = 0
+            while (smallBufferManager.isRunning(serviceId) && attempts < 50) {
+                delay(50)
+                attempts++
+            }
+
+            val flow = smallBufferManager.streamLogs(serviceId = serviceId, tail = 3)
+            val logs = withTimeout(5000) {
+                flow.toList()
+            }
+
+            assertEquals(3, logs.size, "Should receive exactly tail=3 lines from buffer. Received: $logs")
+            assertTrue(logs[0].contains("line 18"), "First emitted line should be line 18. Actual: ${logs[0]}")
+            assertTrue(logs[1].contains("line 19"), "Second emitted line should be line 19. Actual: ${logs[1]}")
+            assertTrue(logs[2].contains("line 20"), "Third emitted line should be line 20. Actual: ${logs[2]}")
+        }
+    }
 }
+

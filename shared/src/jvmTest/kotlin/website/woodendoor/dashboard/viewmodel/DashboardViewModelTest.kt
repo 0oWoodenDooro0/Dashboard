@@ -173,13 +173,13 @@ class DashboardViewModelTest {
 
         override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
 
-        override suspend fun getContainerState(containerName: String): ContainerState {
-            return containerStates[containerName] ?: ContainerState.Running(status = "Up 2 hours")
+        override suspend fun getContainerState(nameOrId: String): ContainerState {
+            return containerStates[nameOrId] ?: ContainerState.Running(status = "Up 2 hours")
         }
 
         override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
 
-        override fun streamLogs(containerName: String, tail: Int): Flow<String> = flow {}
+        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = flow {}
 
         override suspend fun startContainer(nameOrId: String) {
             containerStates[nameOrId] = ContainerState.Running(status = "running")
