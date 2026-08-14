@@ -219,6 +219,30 @@ fun ServiceEditDialog(
                                 placeholder = "e.g. docker-compose.prod.yml (optional)"
                             )
                         }
+                        LogSourceType.COMMAND -> {
+                            FormField(
+                                label = "Working Directory *",
+                                value = formState.commandWorkingDir,
+                                onValueChange = { formState = formState.copy(commandWorkingDir = it) },
+                                placeholder = "e.g. /home/user/project or ./frontend",
+                                errorMessage = errors["commandWorkingDir"]
+                            )
+
+                            FormField(
+                                label = "Start Command *",
+                                value = formState.commandStartScript,
+                                onValueChange = { formState = formState.copy(commandStartScript = it) },
+                                placeholder = "e.g. npm run dev, python app.py, ./gradlew bootRun",
+                                errorMessage = errors["commandStartScript"]
+                            )
+
+                            FormField(
+                                label = "Stop Command (Optional)",
+                                value = formState.commandStopScript,
+                                onValueChange = { formState = formState.copy(commandStopScript = it) },
+                                placeholder = "e.g. npm run stop (optional, defaults to process tree kill)"
+                            )
+                        }
                         LogSourceType.LOCAL_FILE -> {
                             FormField(
                                 label = "Local Log File Path *",

@@ -430,6 +430,7 @@ fun describeLogSource(source: LogSource): String {
     return when (source) {
         is LogSource.Docker -> "docker: ${source.containerName}"
         is LogSource.DockerCompose -> "compose: ${source.serviceName} (${source.projectDir})"
+        is LogSource.Command -> "cmd: ${source.startCommand} (${source.workingDir})"
         is LogSource.LocalFile -> "file: ${source.path}"
         LogSource.None -> "No Log Source"
     }

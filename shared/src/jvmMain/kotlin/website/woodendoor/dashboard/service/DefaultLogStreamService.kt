@@ -18,6 +18,7 @@ import website.woodendoor.dashboard.model.LogSource
 class DefaultLogStreamService(
     private val dockerClient: DockerClient = CliDockerClient(),
     private val dockerComposeClient: DockerComposeClient = CliDockerComposeClient(),
+    private val processManager: ProcessManager = DefaultProcessManager(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val pollDelayMs: Long = 100L
 ) : LogStreamService {
@@ -31,6 +32,7 @@ class DefaultLogStreamService(
                 composeFile = source.composeFile,
                 tail = tail
             )
+            is LogSource.Command -> processManager.streamLogs(source, tail = tail)
             is LogSource.LocalFile -> streamLocalFile(File(source.path), tail = tail)
             is LogSource.None -> emptyFlow()
         }

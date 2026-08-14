@@ -66,6 +66,9 @@ fun ServiceCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onStart: (() -> Unit)? = null,
+    onStop: (() -> Unit)? = null,
+    onRestart: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val portHealthInfo = UiHelpers.getPortHealthDisplayInfo(status?.portHealth)
@@ -239,6 +242,13 @@ fun ServiceCard(
                             bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                     }
+                    is LogSource.Command -> {
+                        SmallChip(
+                            text = "cmd: ${src.startCommand}",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    }
                     is LogSource.LocalFile -> {
                         val fileName = src.path.substringAfterLast("/")
                         SmallChip(
@@ -268,25 +278,87 @@ fun ServiceCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Open in Browser
-                val targetUrl = service.openUrl ?: service.healthUrl
-                if (!targetUrl.isNullOrBlank()) {
-                    OutlinedButton(
-                        onClick = { onOpenUrl(targetUrl) },
-                        shape = MaterialTheme.shapes.extraSmall,
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "Open",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
+                // Open in Browser & Command Controls
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val targetUrl = service.openUrl ?: service.healthUrl
+                    if (!targetUrl.isNullOrBlank()) {
+                        OutlinedButton(
+                            onClick = { onOpenUrl(targetUrl) },
+                            shape = MaterialTheme.shapes.extraSmall,
+                            modifier = Modifier.height(28.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "Open",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             )
-                        )
+                        }
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+
+                    val isControlSupported = service.logSource is LogSource.Command ||
+                        service.logSource is LogSource.Docker ||
+                        service.logSource is LogSource.DockerCompose
+
+                    if (isControlSupported) {
+                        val isRunning = containerState is ContainerState.Running
+                        if (isRunning) {
+                            if (onRestart != null) {
+                                OutlinedButton(
+                                    onClick = onRestart,
+                                    shape = MaterialTheme.shapes.extraSmall,
+                                    modifier = Modifier.height(28.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Restart",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    )
+                                }
+                            }
+                            if (onStop != null) {
+                                OutlinedButton(
+                                    onClick = onStop,
+                                    shape = MaterialTheme.shapes.extraSmall,
+                                    modifier = Modifier.height(28.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Stop",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    )
+                                }
+                            }
+                        } else {
+                            if (onStart != null) {
+                                OutlinedButton(
+                                    onClick = onStart,
+                                    shape = MaterialTheme.shapes.extraSmall,
+                                    modifier = Modifier.height(28.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Start",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Edit & Delete Buttons

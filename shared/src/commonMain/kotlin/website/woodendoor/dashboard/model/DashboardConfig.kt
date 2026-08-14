@@ -22,12 +22,24 @@ sealed interface LogSource {
     data class LocalFile(val path: String) : LogSource
 
     @Serializable
+    @SerialName("command")
+    data class Command(
+        val workingDir: String,
+        val startCommand: String,
+        val stopCommand: String? = null,
+        val environment: Map<String, String> = emptyMap()
+    ) : LogSource
+
+    @Serializable
     @SerialName("none")
     data object None : LogSource
 }
 
 fun LogSource.DockerCompose.stateKey(): String =
     "compose:$projectDir:$serviceName${if (!composeFile.isNullOrBlank()) ":$composeFile" else ""}"
+
+fun LogSource.Command.stateKey(serviceId: String): String =
+    "command:$serviceId"
 
 @Serializable
 data class ServiceItem(

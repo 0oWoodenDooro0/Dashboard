@@ -44,6 +44,7 @@ data class DashboardUiState(
         get() = when (val source = selectedService?.logSource) {
             is LogSource.Docker -> containerStates[source.containerName]
             is LogSource.DockerCompose -> containerStates[source.stateKey()]
+            is LogSource.Command -> selectedService?.let { containerStates[source.stateKey(it.id)] }
             else -> null
         }
 

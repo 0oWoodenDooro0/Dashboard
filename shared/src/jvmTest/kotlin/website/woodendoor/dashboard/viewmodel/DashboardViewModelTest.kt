@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.DashboardConfig
@@ -42,6 +42,8 @@ class DashboardViewModelTest {
     private lateinit var fakeLogStreamService: FakeLogStreamService
     private lateinit var fakeDockerClient: FakeDockerClient
     private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
+    private lateinit var fakeProcessManager: FakeProcessManager
+    private val activeViewModels = mutableListOf<DashboardViewModel>()
 
     private val sampleService1 = ServiceItem(
         id = "web-1",
@@ -75,6 +77,18 @@ class DashboardViewModelTest {
         logSource = LogSource.DockerCompose(
             projectDir = "/apps/conflux",
             serviceName = "backend"
+        )
+    )
+
+    private val sampleService5 = ServiceItem(
+        id = "cmd-1",
+        name = "Vite App",
+        host = "127.0.0.1",
+        port = 5173,
+        logSource = LogSource.Command(
+            workingDir = "/apps/vite-app",
+            startCommand = "npm run dev",
+            stopCommand = "npm run stop"
         )
     )
 
@@ -115,92 +129,138 @@ class DashboardViewModelTest {
         }
     }
 
-    private class FakePortHealthChecker(
-        var defaultHealth: PortHealth = PortHealth.Open(latencyMs = 15)
-    ) : PortHealthChecker {
-        var customHealthMap = mutableMapOf<String, PortHealth>()
+    private class FakePortHealthChecker : PortHealthChecker {
         var checkServicesCallCount = 0
-        var shouldThrow = false
+        var customHealthMap = mutableMapOf<String, PortHealth>()
 
         override suspend fun checkPort(host: String, port: Int, timeoutMs: Long): PortHealth {
-            return defaultHealth
+            return PortHealth.Open(latencyMs = 15)
         }
 
         override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> {
-            if (shouldThrow) throw RuntimeException("Network probe failure")
             checkServicesCallCount++
-            val now = 1000L
             return services.associate { service ->
-                val health = customHealthMap[service.id] ?: defaultHealth
+                val health = customHealthMap[service.id] ?: PortHealth.Open(latencyMs = 15)
                 service.id to ServiceStatus(
                     serviceId = service.id,
-                    portHealth = health,
-                    isHealthy = health is PortHealth.Open || health is PortHealth.None,
-                    lastCheckedTimestamp = now
+                    portHealth = health
                 )
             }
         }
     }
 
     private class FakeLogStreamService : LogStreamService {
-        val streams = mutableMapOf<LogSource, MutableSharedFlow<String>>()
-        var streamCallCount = 0
+        val flowMap = mutableMapOf<LogSource, MutableSharedFlow<String>>()
         var lastRequestedSource: LogSource? = null
 
         fun getOrCreateFlow(source: LogSource): MutableSharedFlow<String> {
-            return streams.getOrPut(source) {
-                MutableSharedFlow(extraBufferCapacity = 64)
-            }
+            return flowMap.getOrPut(source) { MutableSharedFlow(extraBufferCapacity = 64) }
         }
 
         override fun streamLogs(source: LogSource, tail: Int): Flow<String> {
-            streamCallCount++
             lastRequestedSource = source
-            return getOrCreateFlow(source)
+            return when (source) {
+                is LogSource.None -> flow {}
+                else -> getOrCreateFlow(source)
+            }
         }
     }
 
     private class FakeDockerClient(
         var isDockerAvailableResult: Boolean = true
     ) : DockerClient {
-        var containerStates = mutableMapOf<String, ContainerState>()
-        var customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
-        var shouldThrowOnAvailable = false
+        val containerStates = mutableMapOf<String, ContainerState>()
 
-        override suspend fun isDockerAvailable(): Boolean {
-            if (shouldThrowOnAvailable) throw RuntimeException("Docker daemon socket error")
-            return isDockerAvailableResult
+        override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
+
+        override suspend fun getContainerState(nameOrId: String): ContainerState {
+            return containerStates[nameOrId] ?: ContainerState.Running(status = "Up 2 hours")
         }
 
         override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
 
-        override suspend fun getContainerState(nameOrId: String): ContainerState {
-            return containerStates[nameOrId] ?: ContainerState.Running(status = "running")
+        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = flow {}
+
+        override suspend fun startContainer(nameOrId: String) {
+            containerStates[nameOrId] = ContainerState.Running(status = "running")
         }
 
-        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = customLogFlow
+        override suspend fun stopContainer(nameOrId: String) {
+            containerStates[nameOrId] = ContainerState.Exited(exitCode = 0, status = "exited")
+        }
+
+        override suspend fun restartContainer(nameOrId: String) {
+            containerStates[nameOrId] = ContainerState.Running(status = "running")
+        }
     }
 
     private class FakeDockerComposeClient(
         var isComposeAvailableResult: Boolean = true
     ) : website.woodendoor.dashboard.service.DockerComposeClient {
-        var composeStates = mutableMapOf<String, ContainerState>()
-        var customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
-        var shouldThrowOnAvailable = false
+        val composeStates = mutableMapOf<String, ContainerState>()
+        var customLogFlow: Flow<String> = flow {}
 
-        override suspend fun isComposeAvailable(): Boolean {
-            if (shouldThrowOnAvailable) throw RuntimeException("Compose error")
-            return isComposeAvailableResult
-        }
+        override suspend fun isComposeAvailable(): Boolean = isComposeAvailableResult
 
         override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState {
-            val key = "compose:$projectDir:$serviceName${if (!composeFile.isNullOrBlank()) ":$composeFile" else ""}"
-            return composeStates[key] ?: ContainerState.Running(status = "running")
+            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
+            return composeStates[key] ?: ContainerState.Running(status = "Up 1 hour")
         }
 
         override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
 
         override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> = customLogFlow
+
+        override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
+            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
+            composeStates[key] = ContainerState.Running(status = "running")
+        }
+
+        override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {
+            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
+            composeStates[key] = ContainerState.Exited(exitCode = 0, status = "exited")
+        }
+
+        override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {
+            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
+            composeStates[key] = ContainerState.Running(status = "running")
+        }
+    }
+
+    private class FakeProcessManager : website.woodendoor.dashboard.service.ProcessManager {
+        var runningProcesses = mutableSetOf<String>()
+        val processStates = mutableMapOf<String, ContainerState>()
+        val startProcessCalls = mutableListOf<Triple<String, String, String>>()
+        val stopProcessCalls = mutableListOf<String>()
+        val restartProcessCalls = mutableListOf<Triple<String, String, String>>()
+        val customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
+
+        override suspend fun startProcess(serviceId: String, workingDir: String, command: String, environment: Map<String, String>) {
+            startProcessCalls.add(Triple(serviceId, workingDir, command))
+            runningProcesses.add(serviceId)
+            processStates[serviceId] = ContainerState.Running(status = "running")
+        }
+
+        override suspend fun stopProcess(serviceId: String, stopCommand: String?, workingDir: String?, timeoutSeconds: Int) {
+            stopProcessCalls.add(serviceId)
+            runningProcesses.remove(serviceId)
+            processStates[serviceId] = ContainerState.Exited(exitCode = 0, status = "stopped")
+        }
+
+        override suspend fun restartProcess(serviceId: String, workingDir: String, command: String, stopCommand: String?, environment: Map<String, String>) {
+            restartProcessCalls.add(Triple(serviceId, workingDir, command))
+            runningProcesses.add(serviceId)
+            processStates[serviceId] = ContainerState.Running(status = "running")
+        }
+
+        override fun isRunning(serviceId: String): Boolean = serviceId in runningProcesses
+
+        override fun getProcessState(serviceId: String): ContainerState =
+            processStates[serviceId] ?: ContainerState.NotFound(reason = "Process not running")
+
+        override fun streamLogs(serviceId: String, tail: Int): Flow<String> = customLogFlow
+
+        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = customLogFlow
     }
 
     @BeforeTest
@@ -210,23 +270,35 @@ class DashboardViewModelTest {
         fakeLogStreamService = FakeLogStreamService()
         fakeDockerClient = FakeDockerClient(isDockerAvailableResult = true)
         fakeDockerComposeClient = FakeDockerComposeClient(isComposeAvailableResult = true)
+        fakeProcessManager = FakeProcessManager()
+        activeViewModels.clear()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        activeViewModels.forEach { it.onCleared() }
+        activeViewModels.clear()
     }
 
     private fun createViewModel(
         testScope: CoroutineScope,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
-        maxLogBufferSize: Int = 1000
+        maxLogBufferSize: Int = 1000,
+        processManager: website.woodendoor.dashboard.service.ProcessManager? = fakeProcessManager
     ): DashboardViewModel {
-        return DashboardViewModel(
+        val vm = DashboardViewModel(
             configRepository = fakeConfigRepository,
             healthChecker = fakeHealthChecker,
             logStreamService = fakeLogStreamService,
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
+            processManager = processManager,
             coroutineScope = testScope,
             defaultDispatcher = dispatcher,
             maxLogBufferSize = maxLogBufferSize
         )
+        activeViewModels.add(vm)
+        return vm
     }
 
     @Test
@@ -234,7 +306,7 @@ class DashboardViewModelTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
 
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         assertFalse(state.isLoading, "isLoading should be false after initialization")
@@ -253,7 +325,7 @@ class DashboardViewModelTest {
     fun observeConfig_updatesStateWhenConfigChanges() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val newService = ServiceItem(id = "api-1", name = "API Gateway", port = 8080)
         val updatedConfig = sampleConfig.copy(
@@ -261,7 +333,7 @@ class DashboardViewModelTest {
         )
 
         fakeConfigRepository.saveConfig(updatedConfig)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         assertEquals(4, state.allServices.size)
@@ -273,7 +345,7 @@ class DashboardViewModelTest {
     fun periodicPolling_updatesHealthAndContainerStates() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, fakeHealthChecker.checkServicesCallCount)
 
@@ -283,7 +355,7 @@ class DashboardViewModelTest {
 
         // Advance by polling interval (5 seconds = 5000ms)
         advanceTimeBy(5100)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         assertTrue(fakeHealthChecker.checkServicesCallCount >= 2)
@@ -296,10 +368,10 @@ class DashboardViewModelTest {
     fun selectService_startsLogStreamAndPopulatesLogs() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals("web-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService1, viewModel.state.value.selectedService)
@@ -307,7 +379,7 @@ class DashboardViewModelTest {
         val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         flow.emit("2026-08-14 Server started on port 3000")
         flow.emit("2026-08-14 GET /api/v1/health 200 OK")
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         assertEquals(2, state.logs.size)
@@ -319,32 +391,32 @@ class DashboardViewModelTest {
     fun selectService_switchingService_clearsPreviousLogsAndCancelsOldStream() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
-        advanceUntilIdle()
+        runCurrent()
 
         val webFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         webFlow.emit("web log 1")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf("web log 1"), viewModel.state.value.logs)
 
         // Switch to db-1
         viewModel.selectService("db-1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals("db-1", viewModel.state.value.selectedServiceId)
         assertTrue(viewModel.state.value.logs.isEmpty(), "Logs should be reset on service switch")
 
         val dbFlow = fakeLogStreamService.getOrCreateFlow(sampleService2.logSource)
         dbFlow.emit("db log 1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(listOf("db log 1"), viewModel.state.value.logs)
 
         // Emitting to previous web flow must NOT affect current logs
         webFlow.emit("web log 2 (should be ignored)")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(listOf("db log 1"), viewModel.state.value.logs)
     }
@@ -353,10 +425,10 @@ class DashboardViewModelTest {
     fun selectService_noneLogSource_hasEmptyLogs() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("cache-1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals("cache-1", viewModel.state.value.selectedServiceId)
         assertTrue(viewModel.state.value.logs.isEmpty())
@@ -367,16 +439,16 @@ class DashboardViewModelTest {
     fun selectService_null_deselectsAndClearsLogs() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
         val webFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         webFlow.emit("log line")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(1, viewModel.state.value.logs.size)
 
         viewModel.selectService(null)
-        advanceUntilIdle()
+        runCurrent()
 
         assertNull(viewModel.state.value.selectedServiceId)
         assertNull(viewModel.state.value.selectedService)
@@ -387,16 +459,16 @@ class DashboardViewModelTest {
     fun logBuffer_capsAtMaxCapacity() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher, maxLogBufferSize = 5)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
-        advanceUntilIdle()
+        runCurrent()
 
         val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         for (i in 1..8) {
             flow.emit("Line $i")
         }
-        advanceUntilIdle()
+        runCurrent()
 
         val logs = viewModel.state.value.logs
         assertEquals(5, logs.size, "Logs must be capped at maxLogBufferSize")
@@ -407,7 +479,7 @@ class DashboardViewModelTest {
     fun setLogSearchQuery_filtersLogsCorrectly() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
         val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
@@ -415,7 +487,7 @@ class DashboardViewModelTest {
         flow.emit("ERROR: Database connection timeout")
         flow.emit("DEBUG: Cache hit for key user_1")
         flow.emit("error: Failed to write audit log")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(4, viewModel.state.value.logs.size)
         assertEquals(4, viewModel.state.value.filteredLogs.size)
@@ -437,7 +509,7 @@ class DashboardViewModelTest {
     fun toggleAutoScroll_updatesState() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         assertTrue(viewModel.state.value.isAutoScrollEnabled)
 
@@ -452,13 +524,13 @@ class DashboardViewModelTest {
     fun clearLogs_clearsLogBuffer() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
         val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         flow.emit("line 1")
         flow.emit("line 2")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(2, viewModel.state.value.logs.size)
 
         viewModel.clearLogs()
@@ -466,7 +538,7 @@ class DashboardViewModelTest {
 
         // Next line still streams properly
         flow.emit("line 3")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf("line 3"), viewModel.state.value.logs)
     }
 
@@ -474,7 +546,7 @@ class DashboardViewModelTest {
     fun addService_appendsServiceToSpecifiedOrFirstGroupAndSaves() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val newService = ServiceItem(
             id = "worker-1",
@@ -483,7 +555,7 @@ class DashboardViewModelTest {
         )
 
         viewModel.addService(newService, groupId = "core-group")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, fakeConfigRepository.saveCallCount)
         val updatedGroup = fakeConfigRepository.currentConfig.groups.find { it.id == "core-group" }
@@ -495,11 +567,11 @@ class DashboardViewModelTest {
     fun updateService_modifiesExistingServiceAndSaves() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val updatedWeb1 = sampleService1.copy(name = "Updated Web App", port = 3001)
         viewModel.updateService(updatedWeb1)
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, fakeConfigRepository.saveCallCount)
         val savedService = fakeConfigRepository.currentConfig.groups
@@ -514,22 +586,22 @@ class DashboardViewModelTest {
     fun updateService_ifSelectedAndLogSourceChanged_restartsLogStream() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
         val oldFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         oldFlow.emit("old log 1")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf("old log 1"), viewModel.state.value.logs)
 
         val newLogSource = LogSource.LocalFile("/var/log/web_new.log")
         val updatedWeb1 = sampleService1.copy(logSource = newLogSource)
         viewModel.updateService(updatedWeb1)
-        advanceUntilIdle()
+        runCurrent()
 
         val newFlow = fakeLogStreamService.getOrCreateFlow(newLogSource)
         newFlow.emit("new log 1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(listOf("new log 1"), viewModel.state.value.logs)
     }
@@ -538,14 +610,14 @@ class DashboardViewModelTest {
     fun deleteService_removesServiceAndClearsSelectionIfSelected() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals("web-1", viewModel.state.value.selectedServiceId)
 
         viewModel.deleteService("web-1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(1, fakeConfigRepository.saveCallCount)
         val allServices = fakeConfigRepository.currentConfig.groups.flatMap { it.services }
@@ -558,13 +630,13 @@ class DashboardViewModelTest {
     fun triggerRefresh_manuallyRefreshesState() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val initialCount = fakeHealthChecker.checkServicesCallCount
 
         fakeHealthChecker.customHealthMap["web-1"] = PortHealth.Unreachable("Host unreachable")
         viewModel.triggerRefresh()
-        advanceUntilIdle()
+        runCurrent()
 
         assertTrue(fakeHealthChecker.checkServicesCallCount > initialCount)
         assertIs<PortHealth.Unreachable>(viewModel.state.value.serviceStatuses["web-1"]?.portHealth)
@@ -576,7 +648,7 @@ class DashboardViewModelTest {
         fakeConfigRepository.shouldThrowOnLoad = true
 
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         assertNotNull(viewModel.state.value.errorMessage)
         assertEquals("Failed to read config file", viewModel.state.value.errorMessage)
@@ -589,20 +661,20 @@ class DashboardViewModelTest {
     fun periodicPolling_updatesDockerComposeContainerStates() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val composeConfig = sampleConfig.copy(
             groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService4))
         )
         fakeConfigRepository.saveConfig(composeConfig)
-        advanceUntilIdle()
+        runCurrent()
 
         val composeKey = "compose:/apps/conflux:backend"
         fakeDockerComposeClient.composeStates[composeKey] = ContainerState.Exited(exitCode = 143)
 
         // Advance by polling interval
         advanceTimeBy(5100)
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         val containerState = state.containerStates[composeKey]
@@ -615,16 +687,16 @@ class DashboardViewModelTest {
     fun selectService_dockerComposeLogSource_startsLogStream() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         val composeConfig = sampleConfig.copy(
             groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService4))
         )
         fakeConfigRepository.saveConfig(composeConfig)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("compose-1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals("compose-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService4, viewModel.state.value.selectedService)
@@ -632,7 +704,7 @@ class DashboardViewModelTest {
         val flow = fakeLogStreamService.getOrCreateFlow(sampleService4.logSource)
         flow.emit("compose backend | started")
         flow.emit("compose backend | ready")
-        advanceUntilIdle()
+        runCurrent()
 
         val state = viewModel.state.value
         assertEquals(2, state.logs.size)
@@ -644,12 +716,12 @@ class DashboardViewModelTest {
     fun updateService_switchingToDockerCompose_restartsLogStream() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)
-        advanceUntilIdle()
+        runCurrent()
 
         viewModel.selectService("web-1")
         val oldFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
         oldFlow.emit("web log 1")
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf("web log 1"), viewModel.state.value.logs)
 
         val newComposeSource = LogSource.DockerCompose(
@@ -658,12 +730,224 @@ class DashboardViewModelTest {
         )
         val updatedWeb1 = sampleService1.copy(logSource = newComposeSource)
         viewModel.updateService(updatedWeb1)
-        advanceUntilIdle()
+        runCurrent()
 
         val composeFlow = fakeLogStreamService.getOrCreateFlow(newComposeSource)
         composeFlow.emit("compose new log 1")
-        advanceUntilIdle()
+        runCurrent()
 
         assertEquals(listOf("compose new log 1"), viewModel.state.value.logs)
+    }
+
+    @Test
+    fun startService_startsLocalProcessAndTriggersRefresh() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        viewModel.startService(sampleService5)
+        runCurrent()
+
+        assertEquals(1, fakeProcessManager.startProcessCalls.size)
+        val (serviceId, workingDir, command) = fakeProcessManager.startProcessCalls.first()
+        assertEquals("cmd-1", serviceId)
+        assertEquals("/apps/vite-app", workingDir)
+        assertEquals("npm run dev", command)
+
+        val commandKey = "command:cmd-1"
+        val state = viewModel.state.value
+        assertNotNull(state.containerStates[commandKey])
+        assertIs<ContainerState.Running>(state.containerStates[commandKey])
+    }
+
+    @Test
+    fun stopService_stopsLocalProcessAndTriggersRefresh() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // Start it first
+        viewModel.startService(sampleService5)
+        runCurrent()
+        assertTrue(fakeProcessManager.isRunning("cmd-1"))
+
+        // Stop it
+        viewModel.stopService(sampleService5)
+        runCurrent()
+
+        assertEquals(1, fakeProcessManager.stopProcessCalls.size)
+        assertEquals("cmd-1", fakeProcessManager.stopProcessCalls.first())
+        assertFalse(fakeProcessManager.isRunning("cmd-1"))
+
+        val commandKey = "command:cmd-1"
+        val state = viewModel.state.value
+        assertNotNull(state.containerStates[commandKey])
+        assertIs<ContainerState.Exited>(state.containerStates[commandKey])
+    }
+
+    @Test
+    fun restartService_restartsLocalProcessAndTriggersRefresh() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        viewModel.restartService(sampleService5)
+        runCurrent()
+
+        assertEquals(1, fakeProcessManager.restartProcessCalls.size)
+        val (serviceId, workingDir, command) = fakeProcessManager.restartProcessCalls.first()
+        assertEquals("cmd-1", serviceId)
+        assertEquals("/apps/vite-app", workingDir)
+        assertEquals("npm run dev", command)
+        assertTrue(fakeProcessManager.isRunning("cmd-1"))
+    }
+
+    @Test
+    fun deleteService_stopsProcessIfRunning() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // Start service
+        viewModel.startService(sampleService5)
+        runCurrent()
+        assertTrue(fakeProcessManager.isRunning("cmd-1"))
+
+        // Delete service
+        viewModel.deleteService("cmd-1")
+        runCurrent()
+
+        assertEquals(1, fakeProcessManager.stopProcessCalls.size)
+        assertEquals("cmd-1", fakeProcessManager.stopProcessCalls.first())
+        assertFalse(fakeProcessManager.isRunning("cmd-1"))
+    }
+
+    @Test
+    fun periodicPolling_updatesCommandProcessStates() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        val commandKey = "command:cmd-1"
+        fakeProcessManager.processStates["cmd-1"] = ContainerState.Running(status = "running")
+
+        advanceTimeBy(5100)
+        runCurrent()
+
+        val state = viewModel.state.value
+        val containerState = state.containerStates[commandKey]
+        assertNotNull(containerState)
+        assertIs<ContainerState.Running>(containerState)
+    }
+
+    @Test
+    fun selectService_commandLogSource_startsLogStream() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        viewModel.selectService("cmd-1")
+        runCurrent()
+
+        assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
+        assertEquals(sampleService5, viewModel.state.value.selectedService)
+
+        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        flow.emit("vite ready in 250ms")
+        flow.emit("ready on http://localhost:5173")
+        runCurrent()
+
+        val state = viewModel.state.value
+        assertEquals(2, state.logs.size)
+        assertEquals("vite ready in 250ms", state.logs[0])
+        assertEquals("ready on http://localhost:5173", state.logs[1])
+    }
+
+    @Test
+    fun startStopRestart_dockerService_invokesDockerClient() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        // Start Docker container
+        viewModel.startService(sampleService2)
+        runCurrent()
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["postgres-db"])
+
+        // Restart Docker container
+        viewModel.restartService(sampleService2)
+        runCurrent()
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["postgres-db"])
+
+        // Stop Docker container
+        viewModel.stopService(sampleService2)
+        runCurrent()
+        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates["postgres-db"])
+    }
+
+    @Test
+    fun startStopRestart_dockerComposeService_invokesComposeClient() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val composeConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService4))
+        )
+        fakeConfigRepository.saveConfig(composeConfig)
+        runCurrent()
+
+        val composeKey = "compose:/apps/conflux:backend"
+
+        // Start Docker Compose service
+        viewModel.startService(sampleService4)
+        runCurrent()
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates[composeKey])
+
+        // Restart Docker Compose service
+        viewModel.restartService(sampleService4)
+        runCurrent()
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates[composeKey])
+
+        // Stop Docker Compose service
+        viewModel.stopService(sampleService4)
+        runCurrent()
+        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates[composeKey])
     }
 }

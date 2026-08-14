@@ -7,7 +7,8 @@ enum class LogSourceType(val displayName: String) {
     NONE("None"),
     DOCKER("Docker Container"),
     DOCKER_COMPOSE("Docker Compose"),
-    LOCAL_FILE("Local File")
+    LOCAL_FILE("Local File"),
+    COMMAND("Directory Command (npm / py / gradle)")
 }
 
 data class ServiceFormState(
@@ -25,7 +26,10 @@ data class ServiceFormState(
     val localFilePath: String = "",
     val composeProjectDir: String = "",
     val composeServiceName: String = "",
-    val composeFileName: String = ""
+    val composeFileName: String = "",
+    val commandWorkingDir: String = "",
+    val commandStartScript: String = "",
+    val commandStopScript: String = ""
 ) {
     companion object {
         fun fromServiceItem(item: ServiceItem, groupName: String = "Default"): ServiceFormState {
@@ -57,6 +61,21 @@ data class ServiceFormState(
                     composeProjectDir = src.projectDir,
                     composeServiceName = src.serviceName,
                     composeFileName = src.composeFile ?: ""
+                )
+                is LogSource.Command -> ServiceFormState(
+                    id = item.id,
+                    name = item.name,
+                    groupName = groupName,
+                    host = item.host,
+                    port = item.port?.toString() ?: "",
+                    openUrl = item.openUrl ?: "",
+                    healthUrl = item.healthUrl ?: "",
+                    description = item.description ?: "",
+                    tags = item.tags.joinToString(", "),
+                    logSourceType = LogSourceType.COMMAND,
+                    commandWorkingDir = src.workingDir,
+                    commandStartScript = src.startCommand,
+                    commandStopScript = src.stopCommand ?: ""
                 )
                 is LogSource.LocalFile -> ServiceFormState(
                     id = item.id,
@@ -142,6 +161,28 @@ object ServiceFormValidator {
                         projectDir = projectDir,
                         serviceName = serviceName,
                         composeFile = composeFile
+                    )
+                } else {
+                    LogSource.None
+                }
+            }
+            LogSourceType.COMMAND -> {
+                val workingDir = state.commandWorkingDir.trim()
+                val startCommand = state.commandStartScript.trim()
+                val stopCommand = state.commandStopScript.trim().ifEmpty { null }
+
+                if (workingDir.isEmpty()) {
+                    errors["commandWorkingDir"] = "Working directory cannot be empty for Directory Command log source"
+                }
+                if (startCommand.isEmpty()) {
+                    errors["commandStartScript"] = "Start command cannot be empty for Directory Command log source"
+                }
+
+                if (workingDir.isNotEmpty() && startCommand.isNotEmpty()) {
+                    LogSource.Command(
+                        workingDir = workingDir,
+                        startCommand = startCommand,
+                        stopCommand = stopCommand
                     )
                 } else {
                     LogSource.None

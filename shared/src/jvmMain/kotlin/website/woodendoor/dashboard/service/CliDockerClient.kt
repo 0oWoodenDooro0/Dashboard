@@ -174,6 +174,33 @@ class CliDockerClient(
         return executor.executeStreaming(cmd)
     }
 
+    override suspend fun startContainer(nameOrId: String) {
+        val cmd = listOf(dockerExecutable, "start", nameOrId)
+        val result = executor.execute(cmd)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to start container $nameOrId" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
+    override suspend fun stopContainer(nameOrId: String) {
+        val cmd = listOf(dockerExecutable, "stop", nameOrId)
+        val result = executor.execute(cmd, timeoutMs = 15000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop container $nameOrId" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
+    override suspend fun restartContainer(nameOrId: String) {
+        val cmd = listOf(dockerExecutable, "restart", nameOrId)
+        val result = executor.execute(cmd, timeoutMs = 20000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart container $nameOrId" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
     @Serializable
     private data class RawDockerPsOutput(
         @SerialName("ID") val id: String = "",

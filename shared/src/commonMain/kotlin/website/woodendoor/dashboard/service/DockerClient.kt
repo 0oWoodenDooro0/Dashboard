@@ -9,4 +9,7 @@ interface DockerClient {
     suspend fun listContainers(all: Boolean = true): List<DockerContainerInfo>
     suspend fun getContainerState(nameOrId: String): ContainerState
     fun streamLogs(nameOrId: String, tail: Int = 100): Flow<String>
+    suspend fun startContainer(nameOrId: String)
+    suspend fun stopContainer(nameOrId: String)
+    suspend fun restartContainer(nameOrId: String)
 }
