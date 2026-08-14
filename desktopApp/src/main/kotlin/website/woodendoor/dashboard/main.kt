@@ -8,13 +8,13 @@ import androidx.compose.ui.window.rememberWindowState
 
 fun main() = application {
     val windowState = rememberWindowState(
-        size = DpSize(1200.dp, 800.dp)
+        size = DpSize(1280.dp, 820.dp)
     )
 
     Window(
         onCloseRequest = ::exitApplication,
         state = windowState,
-        title = "Dashboard"
+        title = "WoodenDoor Dashboard - Service & Log Observability"
     ) {
         App()
     }
