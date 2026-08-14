@@ -3,22 +3,22 @@ package website.woodendoor.dashboard.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -26,9 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.ui.theme.StatusHealthy
 import website.woodendoor.dashboard.ui.theme.StatusHealthyBg
 import website.woodendoor.dashboard.ui.theme.StatusNeutral
@@ -48,47 +46,8 @@ fun DashboardTopBar(
     TopAppBar(
         title = {
             Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "D",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(
-                        text = "DevDashboard",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Port & Container Observability",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        actions = {
-            Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(end = 12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Total Services Indicator
                 AssistChip(
@@ -151,9 +110,9 @@ fun DashboardTopBar(
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(StatusUnreachable)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(StatusUnreachable)
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
@@ -190,45 +149,45 @@ fun DashboardTopBar(
                     ),
                     border = null
                 )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
+            }
+        },
+        actions = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(end = 12.dp)
+            ) {
                 // Refresh Button
-                OutlinedButton(
+                IconButton(
                     onClick = onRefresh,
-                    enabled = !isLoading,
-                    shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.height(36.dp)
+                    enabled = !isLoading
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Refreshing...", style = MaterialTheme.typography.labelMedium)
                     } else {
-                        Text("Refresh", style = MaterialTheme.typography.labelMedium)
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh services",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
                 // Add Service Button
-                Button(
+                FilledIconButton(
                     onClick = onAddService,
-                    shape = MaterialTheme.shapes.small,
-                    colors = ButtonDefaults.buttonColors(
+                    colors = IconButtonDefaults.filledIconButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    modifier = Modifier.height(36.dp)
+                    )
                 ) {
-                    Text(
-                        text = "Add Service",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add service"
                     )
                 }
             }
