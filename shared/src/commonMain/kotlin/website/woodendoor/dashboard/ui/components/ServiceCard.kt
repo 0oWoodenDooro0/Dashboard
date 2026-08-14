@@ -285,7 +285,7 @@ fun ServiceCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val targetUrl = service.openUrl ?: service.healthUrl
+                    val targetUrl = service.openUrl
                     if (!targetUrl.isNullOrBlank()) {
                         OutlinedButton(
                             onClick = { onOpenUrl(targetUrl) },

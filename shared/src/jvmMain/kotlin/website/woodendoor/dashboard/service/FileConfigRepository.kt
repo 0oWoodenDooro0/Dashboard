@@ -58,7 +58,11 @@ class FileConfigRepository(
                                 host = "127.0.0.1",
                                 port = 3000,
                                 openUrl = "http://localhost:3000",
-                                logSource = LogSource.None,
+                                logSource = LogSource.Command(
+                                    workingDir = "/apps/frontend-web",
+                                    startCommand = "npm run dev",
+                                    stopCommand = "npm run stop"
+                                ),
                                 description = "Frontend Development Server",
                                 tags = listOf("frontend", "ui")
                             ),
