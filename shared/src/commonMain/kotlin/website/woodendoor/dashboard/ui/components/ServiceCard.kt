@@ -17,15 +17,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -283,22 +290,19 @@ fun ServiceCard(
                 // Open in Browser & Command Controls
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     val targetUrl = service.openUrl
                     if (!targetUrl.isNullOrBlank()) {
-                        OutlinedButton(
+                        IconButton(
                             onClick = { onOpenUrl(targetUrl) },
-                            shape = MaterialTheme.shapes.extraSmall,
-                            modifier = Modifier.height(28.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                            modifier = Modifier.size(28.dp)
                         ) {
-                            Text(
-                                text = "Open",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "Open in browser",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -309,80 +313,56 @@ fun ServiceCard(
 
                     if (isControlSupported) {
                         if (isOperating) {
-                            OutlinedButton(
-                                onClick = {},
-                                enabled = false,
-                                shape = MaterialTheme.shapes.extraSmall,
-                                modifier = Modifier.height(28.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            Box(
+                                modifier = Modifier.size(28.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(12.dp),
-                                        strokeWidth = 1.5.dp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = "Wait...",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    )
-                                }
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         } else {
                             val isRunning = containerState is ContainerState.Running
                             if (isRunning) {
                                 if (onRestart != null) {
-                                    OutlinedButton(
+                                    IconButton(
                                         onClick = onRestart,
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        modifier = Modifier.height(28.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        modifier = Modifier.size(28.dp)
                                     ) {
-                                        Text(
-                                            text = "Restart",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = "Restart service",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.secondary
                                         )
                                     }
                                 }
                                 if (onStop != null) {
-                                    OutlinedButton(
+                                    IconButton(
                                         onClick = onStop,
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        modifier = Modifier.height(28.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        modifier = Modifier.size(28.dp)
                                     ) {
-                                        Text(
-                                            text = "Stop",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Medium,
-                                                color = MaterialTheme.colorScheme.error
-                                            )
+                                        Icon(
+                                            imageVector = Icons.Default.Stop,
+                                            contentDescription = "Stop service",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.error
                                         )
                                     }
                                 }
                             } else {
                                 if (onStart != null) {
-                                    OutlinedButton(
+                                    IconButton(
                                         onClick = onStart,
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                        modifier = Modifier.height(28.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        modifier = Modifier.size(28.dp)
                                     ) {
-                                        Text(
-                                            text = "Start",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Start service",
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -397,32 +377,28 @@ fun ServiceCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Edit Button
-                    TextButton(
+                    IconButton(
                         onClick = onEdit,
-                        shape = MaterialTheme.shapes.extraSmall,
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
-                        Text(
-                            text = "Edit",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit service",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     // Delete Button
-                    TextButton(
+                    IconButton(
                         onClick = onDelete,
-                        shape = MaterialTheme.shapes.extraSmall,
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
-                        Text(
-                            text = "Delete",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.error
-                            )
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete service",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
                         )
                     }
                 }
