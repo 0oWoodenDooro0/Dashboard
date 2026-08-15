@@ -107,7 +107,6 @@ fun App(
                 ServiceListPane(
                     groups = state.config.groups,
                     serviceStatuses = state.serviceStatuses,
-                    containerStates = state.containerStates,
                     selectedServiceId = state.selectedServiceId,
                     operatingServiceIds = state.operatingServiceIds,
                     onSelectService = { serviceId ->

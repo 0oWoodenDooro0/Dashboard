@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 import website.woodendoor.dashboard.ui.theme.ContainerExited
 import website.woodendoor.dashboard.ui.theme.ContainerPaused
 import website.woodendoor.dashboard.ui.theme.ContainerRestarting
@@ -67,8 +67,7 @@ import website.woodendoor.dashboard.ui.util.UiHelpers
 @Composable
 fun ServiceCard(
     service: ServiceItem,
-    status: ServiceStatus?,
-    containerState: ContainerState?,
+    status: ServiceRuntimeStatus?,
     isSelected: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
@@ -80,6 +79,7 @@ fun ServiceCard(
     onRestart: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val containerState = status?.containerState
     val portHealthInfo = UiHelpers.getPortHealthDisplayInfo(status?.portHealth)
     val (statusDotColor, statusBgColor) = when (portHealthInfo.statusType) {
         PortStatusType.HEALTHY -> Pair(StatusHealthy, StatusHealthyBg)

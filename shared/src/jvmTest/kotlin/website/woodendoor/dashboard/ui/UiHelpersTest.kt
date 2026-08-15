@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 import website.woodendoor.dashboard.ui.util.ContainerStatusType
 import website.woodendoor.dashboard.ui.util.PortStatusType
 import website.woodendoor.dashboard.ui.util.UiHelpers
@@ -35,9 +35,9 @@ class UiHelpersTest {
         )
 
         val statuses = mapOf(
-            "s1" to ServiceStatus(serviceId = "s1", portHealth = PortHealth.Open(latencyMs = 5), isHealthy = true),
-            "s2" to ServiceStatus(serviceId = "s2", portHealth = PortHealth.Closed("Refused"), isHealthy = false),
-            "s3" to ServiceStatus(serviceId = "s3", portHealth = PortHealth.Unreachable("Timeout"), isHealthy = false)
+            "s1" to ServiceRuntimeStatus(serviceId = "s1", portHealth = PortHealth.Open(latencyMs = 5), isHealthy = true),
+            "s2" to ServiceRuntimeStatus(serviceId = "s2", portHealth = PortHealth.Closed("Refused"), isHealthy = false),
+            "s3" to ServiceRuntimeStatus(serviceId = "s3", portHealth = PortHealth.Unreachable("Timeout"), isHealthy = false)
         )
 
         val metrics = UiHelpers.calculateSummaryMetrics(
