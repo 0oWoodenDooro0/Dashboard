@@ -32,7 +32,6 @@ import website.woodendoor.dashboard.model.ServiceStatus
 import website.woodendoor.dashboard.service.ConfigRepository
 import website.woodendoor.dashboard.service.DefaultServiceRuntimeManager
 import website.woodendoor.dashboard.service.DockerClient
-import website.woodendoor.dashboard.service.LogStreamService
 import website.woodendoor.dashboard.service.PortHealthChecker
 import website.woodendoor.dashboard.service.ServiceRuntimeManager
 
@@ -41,7 +40,6 @@ class DashboardViewModelTest {
 
     private lateinit var fakeConfigRepository: FakeConfigRepository
     private lateinit var fakeHealthChecker: FakePortHealthChecker
-    private lateinit var fakeLogStreamService: FakeLogStreamService
     private lateinit var fakeDockerClient: FakeDockerClient
     private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var fakeProcessManager: FakeProcessManager
@@ -52,7 +50,7 @@ class DashboardViewModelTest {
         name = "Web App",
         host = "127.0.0.1",
         port = 3000,
-        logSource = LogSource.LocalFile("/var/log/web.log")
+        logSource = LogSource.Docker("web-app")
     )
 
     private val sampleService2 = ServiceItem(
@@ -151,35 +149,20 @@ class DashboardViewModelTest {
         }
     }
 
-    private class FakeLogStreamService : LogStreamService {
-        val flowMap = mutableMapOf<LogSource, MutableSharedFlow<String>>()
-        var lastRequestedSource: LogSource? = null
-        var lastRequestedServiceId: String? = null
-
-        fun getOrCreateFlow(source: LogSource): MutableSharedFlow<String> {
-            return flowMap.getOrPut(source) { MutableSharedFlow(extraBufferCapacity = 64) }
-        }
-
-        override fun streamLogs(source: LogSource, serviceId: String?, tail: Int): Flow<String> {
-            lastRequestedSource = source
-            lastRequestedServiceId = serviceId
-            return when (source) {
-                is LogSource.None -> flow {}
-                else -> getOrCreateFlow(source)
-            }
-        }
-    }
-
     private class FakeDockerClient(
         var isDockerAvailableResult: Boolean = true
     ) : DockerClient {
         val containerStates = mutableMapOf<String, ContainerState>()
+        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
         var onStartContainer: (suspend (String) -> Unit)? = null
         var onStopContainer: (suspend (String) -> Unit)? = null
         var onRestartContainer: (suspend (String) -> Unit)? = null
         var shouldThrowOnStart: Boolean = false
         var shouldThrowOnStop: Boolean = false
         var shouldThrowOnRestart: Boolean = false
+
+        fun getOrCreateFlow(nameOrId: String): MutableSharedFlow<String> =
+            flowMap.getOrPut(nameOrId) { MutableSharedFlow(extraBufferCapacity = 64) }
 
         override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
 
@@ -189,7 +172,7 @@ class DashboardViewModelTest {
 
         override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
 
-        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = flow {}
+        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = getOrCreateFlow(nameOrId)
 
         override suspend fun startContainer(nameOrId: String) {
             if (shouldThrowOnStart) throw RuntimeException("Failed to start container $nameOrId")
@@ -214,13 +197,16 @@ class DashboardViewModelTest {
         var isComposeAvailableResult: Boolean = true
     ) : website.woodendoor.dashboard.service.DockerComposeClient {
         val composeStates = mutableMapOf<String, ContainerState>()
-        var customLogFlow: Flow<String> = flow {}
+        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
         var onStartService: (suspend (String) -> Unit)? = null
         var onStopService: (suspend (String) -> Unit)? = null
         var onRestartService: (suspend (String) -> Unit)? = null
         var shouldThrowOnStart: Boolean = false
         var shouldThrowOnStop: Boolean = false
         var shouldThrowOnRestart: Boolean = false
+
+        fun getOrCreateFlow(key: String): MutableSharedFlow<String> =
+            flowMap.getOrPut(key) { MutableSharedFlow(extraBufferCapacity = 64) }
 
         override suspend fun isComposeAvailable(): Boolean = isComposeAvailableResult
 
@@ -231,7 +217,8 @@ class DashboardViewModelTest {
 
         override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
 
-        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> = customLogFlow
+        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> =
+            getOrCreateFlow(serviceName)
 
         override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
             if (shouldThrowOnStart) throw RuntimeException("Failed to start compose service $serviceName")
@@ -261,13 +248,17 @@ class DashboardViewModelTest {
         val startProcessCalls = mutableListOf<Triple<String, String, String>>()
         val stopProcessCalls = mutableListOf<String>()
         val restartProcessCalls = mutableListOf<Triple<String, String, String>>()
-        val customLogFlow = MutableSharedFlow<String>(extraBufferCapacity = 64)
+        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
+        var lastRequestedStreamServiceId: String? = null
         var onStartProcess: (suspend (String) -> Unit)? = null
         var onStopProcess: (suspend (String) -> Unit)? = null
         var onRestartProcess: (suspend (String) -> Unit)? = null
         var shouldThrowOnStart: Boolean = false
         var shouldThrowOnStop: Boolean = false
         var shouldThrowOnRestart: Boolean = false
+
+        fun getOrCreateFlow(serviceId: String): MutableSharedFlow<String> =
+            flowMap.getOrPut(serviceId) { MutableSharedFlow(extraBufferCapacity = 64) }
 
         override suspend fun startProcess(serviceId: String, workingDir: String, command: String, environment: Map<String, String>) {
             if (shouldThrowOnStart) throw RuntimeException("Failed to start process $serviceId")
@@ -298,16 +289,27 @@ class DashboardViewModelTest {
         override fun getProcessState(serviceId: String): ContainerState =
             processStates[serviceId] ?: ContainerState.NotFound(reason = "Process not running")
 
-        override fun streamLogs(serviceId: String, tail: Int): Flow<String> = customLogFlow
+        override fun streamLogs(serviceId: String, tail: Int): Flow<String> {
+            lastRequestedStreamServiceId = serviceId
+            return getOrCreateFlow(serviceId)
+        }
 
-        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = customLogFlow
+        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = flow {}
+    }
+
+    private fun getOrCreateLogFlow(service: ServiceItem): MutableSharedFlow<String> {
+        return when (val src = service.logSource) {
+            is LogSource.Docker -> fakeDockerClient.getOrCreateFlow(src.containerName)
+            is LogSource.DockerCompose -> fakeDockerComposeClient.getOrCreateFlow(src.serviceName)
+            is LogSource.Command -> fakeProcessManager.getOrCreateFlow(service.id)
+            is LogSource.LocalFile, is LogSource.None -> MutableSharedFlow(extraBufferCapacity = 64)
+        }
     }
 
     @BeforeTest
     fun setUp() {
         fakeConfigRepository = FakeConfigRepository(sampleConfig)
         fakeHealthChecker = FakePortHealthChecker()
-        fakeLogStreamService = FakeLogStreamService()
         fakeDockerClient = FakeDockerClient(isDockerAvailableResult = true)
         fakeDockerComposeClient = FakeDockerComposeClient(isComposeAvailableResult = true)
         fakeProcessManager = FakeProcessManager()
@@ -329,8 +331,7 @@ class DashboardViewModelTest {
         val runtime = serviceRuntimeManager ?: DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
-            processManager = fakeProcessManager,
-            logStreamService = fakeLogStreamService
+            processManager = fakeProcessManager
         )
         val vm = DashboardViewModel(
             configRepository = fakeConfigRepository,
@@ -419,7 +420,7 @@ class DashboardViewModelTest {
         assertEquals("web-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService1, viewModel.state.value.selectedService)
 
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val flow = getOrCreateLogFlow(sampleService1)
         flow.emit("2026-08-14 Server started on port 3000")
         flow.emit("2026-08-14 GET /api/v1/health 200 OK")
         runCurrent()
@@ -439,7 +440,7 @@ class DashboardViewModelTest {
         viewModel.selectService("web-1")
         runCurrent()
 
-        val webFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val webFlow = getOrCreateLogFlow(sampleService1)
         webFlow.emit("web log 1")
         runCurrent()
         assertEquals(listOf("web log 1"), viewModel.state.value.logs)
@@ -451,7 +452,7 @@ class DashboardViewModelTest {
         assertEquals("db-1", viewModel.state.value.selectedServiceId)
         assertTrue(viewModel.state.value.logs.isEmpty(), "Logs should be reset on service switch")
 
-        val dbFlow = fakeLogStreamService.getOrCreateFlow(sampleService2.logSource)
+        val dbFlow = getOrCreateLogFlow(sampleService2)
         dbFlow.emit("db log 1")
         runCurrent()
 
@@ -475,7 +476,6 @@ class DashboardViewModelTest {
 
         assertEquals("cache-1", viewModel.state.value.selectedServiceId)
         assertTrue(viewModel.state.value.logs.isEmpty())
-        assertNull(fakeLogStreamService.lastRequestedSource)
     }
 
     @Test
@@ -485,7 +485,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         viewModel.selectService("web-1")
-        val webFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val webFlow = getOrCreateLogFlow(sampleService1)
         webFlow.emit("log line")
         runCurrent()
         assertEquals(1, viewModel.state.value.logs.size)
@@ -507,7 +507,7 @@ class DashboardViewModelTest {
         viewModel.selectService("web-1")
         runCurrent()
 
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val flow = getOrCreateLogFlow(sampleService1)
         for (i in 1..8) {
             flow.emit("Line $i")
         }
@@ -525,7 +525,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         viewModel.selectService("web-1")
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val flow = getOrCreateLogFlow(sampleService1)
         flow.emit("INFO: User login successful")
         flow.emit("ERROR: Database connection timeout")
         flow.emit("DEBUG: Cache hit for key user_1")
@@ -570,7 +570,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         viewModel.selectService("web-1")
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val flow = getOrCreateLogFlow(sampleService1)
         flow.emit("line 1")
         flow.emit("line 2")
         runCurrent()
@@ -632,17 +632,17 @@ class DashboardViewModelTest {
         runCurrent()
 
         viewModel.selectService("web-1")
-        val oldFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val oldFlow = getOrCreateLogFlow(sampleService1)
         oldFlow.emit("old log 1")
         runCurrent()
         assertEquals(listOf("old log 1"), viewModel.state.value.logs)
 
-        val newLogSource = LogSource.LocalFile("/var/log/web_new.log")
+        val newLogSource = LogSource.Docker("web-app-new")
         val updatedWeb1 = sampleService1.copy(logSource = newLogSource)
         viewModel.updateService(updatedWeb1)
         runCurrent()
 
-        val newFlow = fakeLogStreamService.getOrCreateFlow(newLogSource)
+        val newFlow = getOrCreateLogFlow(updatedWeb1)
         newFlow.emit("new log 1")
         runCurrent()
 
@@ -744,7 +744,7 @@ class DashboardViewModelTest {
         assertEquals("compose-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService4, viewModel.state.value.selectedService)
 
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService4.logSource)
+        val flow = getOrCreateLogFlow(sampleService4)
         flow.emit("compose backend | started")
         flow.emit("compose backend | ready")
         runCurrent()
@@ -762,7 +762,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         viewModel.selectService("web-1")
-        val oldFlow = fakeLogStreamService.getOrCreateFlow(sampleService1.logSource)
+        val oldFlow = getOrCreateLogFlow(sampleService1)
         oldFlow.emit("web log 1")
         runCurrent()
         assertEquals(listOf("web log 1"), viewModel.state.value.logs)
@@ -775,7 +775,7 @@ class DashboardViewModelTest {
         viewModel.updateService(updatedWeb1)
         runCurrent()
 
-        val composeFlow = fakeLogStreamService.getOrCreateFlow(newComposeSource)
+        val composeFlow = getOrCreateLogFlow(updatedWeb1)
         composeFlow.emit("compose new log 1")
         runCurrent()
 
@@ -929,7 +929,7 @@ class DashboardViewModelTest {
         assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService5, viewModel.state.value.selectedService)
 
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        val flow = getOrCreateLogFlow(sampleService5)
         flow.emit("vite ready in 250ms")
         flow.emit("ready on http://localhost:5173")
         runCurrent()
@@ -1047,10 +1047,10 @@ class DashboardViewModelTest {
         // Verify service is automatically selected and log stream connected
         assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
         assertEquals(sampleService5, viewModel.state.value.selectedService)
-        assertEquals("cmd-1", fakeLogStreamService.lastRequestedServiceId)
+        assertEquals("cmd-1", fakeProcessManager.lastRequestedStreamServiceId)
 
         // Emit log line to flow
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        val flow = getOrCreateLogFlow(sampleService5)
         flow.emit("npm dev server started")
         runCurrent()
 
@@ -1079,7 +1079,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         // Verify stream remains active and receives new lines
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        val flow = getOrCreateLogFlow(sampleService5)
         flow.emit("new process output after start")
         runCurrent()
 
@@ -1107,9 +1107,9 @@ class DashboardViewModelTest {
 
         // Verify auto-focus
         assertEquals("cmd-1", viewModel.state.value.selectedServiceId)
-        assertEquals("cmd-1", fakeLogStreamService.lastRequestedServiceId)
+        assertEquals("cmd-1", fakeProcessManager.lastRequestedStreamServiceId)
 
-        val flow = fakeLogStreamService.getOrCreateFlow(sampleService5.logSource)
+        val flow = getOrCreateLogFlow(sampleService5)
         flow.emit("server restarted successfully")
         runCurrent()
 
