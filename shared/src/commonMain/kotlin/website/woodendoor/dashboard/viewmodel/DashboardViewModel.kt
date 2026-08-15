@@ -23,12 +23,10 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.service.ConfigRepository
-import website.woodendoor.dashboard.service.PortHealthChecker
 import website.woodendoor.dashboard.service.ServiceRuntimeManager
 
 class DashboardViewModel(
     private val configRepository: ConfigRepository,
-    private val healthChecker: PortHealthChecker,
     private val serviceRuntimeManager: ServiceRuntimeManager,
     coroutineScope: CoroutineScope? = null,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -137,35 +135,15 @@ class DashboardViewModel(
             val currentServices = _state.value.allServices
             val statuses = if (currentServices.isNotEmpty()) {
                 try {
-                    healthChecker.checkServices(currentServices)
+                    serviceRuntimeManager.inspectServices(currentServices)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    _state.update { it.copy(errorMessage = e.message ?: "Error checking service health") }
+                    _state.update { it.copy(errorMessage = e.message ?: "Error inspecting services") }
                     emptyMap()
                 }
             } else {
                 emptyMap()
-            }
-
-            val newContainerStates = mutableMapOf<String, ContainerState>()
-            for (service in currentServices) {
-                val isSupported = when (service.logSource) {
-                    is LogSource.Docker -> isDocker
-                    is LogSource.DockerCompose -> isDocker
-                    is LogSource.Command -> true
-                    else -> false
-                }
-                if (isSupported) {
-                    try {
-                        val state = serviceRuntimeManager.getServiceState(service)
-                        newContainerStates[service.id] = state
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        newContainerStates[service.id] = ContainerState.Unknown("Error retrieving state")
-                    }
-                }
             }
 
             _state.update { current ->
@@ -173,7 +151,6 @@ class DashboardViewModel(
                 current.copy(
                     isDockerAvailable = isDocker,
                     serviceStatuses = mergedStatuses,
-                    containerStates = newContainerStates,
                     isLoading = false
                 )
             }

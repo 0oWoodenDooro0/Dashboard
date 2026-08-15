@@ -23,7 +23,6 @@ import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.service.DefaultServiceRuntimeManager
 import website.woodendoor.dashboard.service.FileConfigRepository
-import website.woodendoor.dashboard.service.SocketPortHealthChecker
 import website.woodendoor.dashboard.ui.components.DashboardTopBar
 import website.woodendoor.dashboard.ui.components.DeleteCategoryConfirmDialog
 import website.woodendoor.dashboard.ui.components.DeleteConfirmDialog
@@ -40,7 +39,6 @@ fun App(
     viewModel: DashboardViewModel = remember {
         DashboardViewModel(
             configRepository = FileConfigRepository(),
-            healthChecker = SocketPortHealthChecker(),
             serviceRuntimeManager = DefaultServiceRuntimeManager()
         )
     }

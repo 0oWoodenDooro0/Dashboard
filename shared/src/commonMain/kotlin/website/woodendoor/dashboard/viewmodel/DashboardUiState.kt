@@ -3,13 +3,12 @@ package website.woodendoor.dashboard.viewmodel
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 
 data class DashboardUiState(
     val config: DashboardConfig = DashboardConfig(),
     val selectedServiceId: String? = null,
-    val serviceStatuses: Map<String, ServiceStatus> = emptyMap(),
-    val containerStates: Map<String, ContainerState> = emptyMap(),
+    val serviceStatuses: Map<String, ServiceRuntimeStatus> = emptyMap(),
     val isDockerAvailable: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
@@ -18,6 +17,12 @@ data class DashboardUiState(
     val isAutoScrollEnabled: Boolean = true,
     val operatingServiceIds: Set<String> = emptySet()
 ) {
+    /**
+     * Map of container/process states extracted from [serviceStatuses].
+     */
+    val containerStates: Map<String, ContainerState>
+        get() = serviceStatuses.mapValues { it.value.containerState }
+
     /**
      * Flattened list of all configured services across all groups.
      */
@@ -31,16 +36,16 @@ data class DashboardUiState(
         get() = allServices.find { it.id == selectedServiceId }
 
     /**
-     * Port health status of the currently selected service.
+     * Port health and runtime status of the currently selected service.
      */
-    val selectedServiceStatus: ServiceStatus?
+    val selectedServiceStatus: ServiceRuntimeStatus?
         get() = selectedServiceId?.let { serviceStatuses[it] }
 
     /**
      * Docker container or process state of the currently selected service.
      */
     val selectedServiceContainerState: ContainerState?
-        get() = selectedServiceId?.let { containerStates[it] }
+        get() = selectedServiceStatus?.containerState
 
     /**
      * Filtered log lines based on [logSearchQuery] (case-insensitive substring match).

@@ -17,10 +17,18 @@ import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
 
+import website.woodendoor.dashboard.model.PortHealth
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
 class DefaultServiceRuntimeManager(
     private val dockerClient: DockerClient = CliDockerClient(),
     private val dockerComposeClient: DockerComposeClient = CliDockerComposeClient(),
     private val processManager: ProcessManager = DefaultProcessManager(),
+    private val portHealthChecker: PortHealthChecker = SocketPortHealthChecker(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val filePollDelayMs: Long = 100L
 ) : ServiceRuntimeManager {
@@ -41,6 +49,132 @@ class DefaultServiceRuntimeManager(
             is LogSource.LocalFile, is LogSource.None -> ContainerState.Unknown("")
         }
     }
+
+    override suspend fun checkPortHealth(service: ServiceItem, timeoutMs: Long): PortHealth {
+        val port = service.port ?: return PortHealth.None
+        return portHealthChecker.checkPort(
+            host = service.host,
+            port = port,
+            timeoutMs = timeoutMs
+        )
+    }
+
+    override suspend fun inspectService(service: ServiceItem): ServiceRuntimeStatus {
+        val now = System.currentTimeMillis()
+        val portHealth = checkPortHealth(service)
+        val containerState = try {
+            when (val src = service.logSource) {
+                is LogSource.Docker -> {
+                    if (isDockerAvailable()) {
+                        dockerClient.getContainerState(src.containerName)
+                    } else {
+                        ContainerState.Unknown("Docker daemon unavailable")
+                    }
+                }
+                is LogSource.DockerCompose -> {
+                    if (isDockerAvailable()) {
+                        dockerComposeClient.getServiceState(
+                            projectDir = src.projectDir,
+                            serviceName = src.serviceName,
+                            composeFile = src.composeFile
+                        )
+                    } else {
+                        ContainerState.Unknown("Docker daemon unavailable")
+                    }
+                }
+                is LogSource.Command -> processManager.getProcessState(service.id)
+                is LogSource.LocalFile, is LogSource.None -> ContainerState.Unknown("")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            ContainerState.Unknown("Error retrieving state")
+        }
+
+        val isPortHealthy = portHealth is PortHealth.Open || portHealth is PortHealth.None
+        val isHealthy = when (service.logSource) {
+            is LogSource.Docker, is LogSource.DockerCompose, is LogSource.Command -> {
+                containerState is ContainerState.Running && isPortHealthy
+            }
+            is LogSource.LocalFile, is LogSource.None -> {
+                isPortHealthy && containerState !is ContainerState.Dead && containerState !is ContainerState.Exited
+            }
+        }
+
+        return ServiceRuntimeStatus(
+            serviceId = service.id,
+            portHealth = portHealth,
+            containerState = containerState,
+            isHealthy = isHealthy,
+            lastCheckedTimestamp = now
+        )
+    }
+
+    override suspend fun inspectServices(services: List<ServiceItem>): Map<String, ServiceRuntimeStatus> =
+        coroutineScope {
+            if (services.isEmpty()) return@coroutineScope emptyMap()
+
+            val isDocker = try {
+                dockerClient.isDockerAvailable()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+
+            services.map { service ->
+                async(ioDispatcher) {
+                    val now = System.currentTimeMillis()
+                    val portHealth = checkPortHealth(service)
+                    val containerState = try {
+                        when (val src = service.logSource) {
+                            is LogSource.Docker -> {
+                                if (isDocker) {
+                                    dockerClient.getContainerState(src.containerName)
+                                } else {
+                                    ContainerState.Unknown("Docker daemon unavailable")
+                                }
+                            }
+                            is LogSource.DockerCompose -> {
+                                if (isDocker) {
+                                    dockerComposeClient.getServiceState(
+                                        projectDir = src.projectDir,
+                                        serviceName = src.serviceName,
+                                        composeFile = src.composeFile
+                                    )
+                                } else {
+                                    ContainerState.Unknown("Docker daemon unavailable")
+                                }
+                            }
+                            is LogSource.Command -> processManager.getProcessState(service.id)
+                            is LogSource.LocalFile, is LogSource.None -> ContainerState.Unknown("")
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        ContainerState.Unknown("Error retrieving state")
+                    }
+
+                    val isPortHealthy = portHealth is PortHealth.Open || portHealth is PortHealth.None
+                    val isHealthy = when (service.logSource) {
+                        is LogSource.Docker, is LogSource.DockerCompose, is LogSource.Command -> {
+                            containerState is ContainerState.Running && isPortHealthy
+                        }
+                        is LogSource.LocalFile, is LogSource.None -> {
+                            isPortHealthy && containerState !is ContainerState.Dead && containerState !is ContainerState.Exited
+                        }
+                    }
+
+                    service.id to ServiceRuntimeStatus(
+                        serviceId = service.id,
+                        portHealth = portHealth,
+                        containerState = containerState,
+                        isHealthy = isHealthy,
+                        lastCheckedTimestamp = now
+                    )
+                }
+            }.awaitAll().toMap()
+        }
 
     override fun streamLogs(service: ServiceItem, tail: Int): Flow<String> {
         return when (val src = service.logSource) {
