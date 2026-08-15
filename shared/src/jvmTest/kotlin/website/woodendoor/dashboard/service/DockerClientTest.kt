@@ -42,6 +42,8 @@ class DockerClientTest {
         }
     }
 
+    // ==================== Docker Daemon & Standalone Container Tests ====================
+
     @Test
     fun isDockerAvailable_whenVersionSucceeds_returnsTrue() = runTest {
         val fakeExecutor = FakeProcessExecutor().apply {
@@ -84,148 +86,6 @@ class DockerClientTest {
         val result = client.isDockerAvailable()
 
         assertFalse(result)
-    }
-
-    @Test
-    fun listContainers_emptyOutput_returnsEmptyList() = runTest {
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 0, stdout = "", stderr = "")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        val result = client.listContainers(all = true)
-
-        assertTrue(result.isEmpty())
-        assertEquals(
-            listOf("docker", "ps", "-a", "--format", "{{json .}}"),
-            fakeExecutor.recordedCommands.first()
-        )
-    }
-
-    @Test
-    fun listContainers_whenAllFalse_doesNotIncludeAllFlag() = runTest {
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 0, stdout = "", stderr = "")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        client.listContainers(all = false)
-
-        assertEquals(
-            listOf("docker", "ps", "--format", "{{json .}}"),
-            fakeExecutor.recordedCommands.first()
-        )
-    }
-
-    @Test
-    fun listContainers_multipleContainers_parsesAllFieldsCorrectly() = runTest {
-        val jsonOutput = """
-            {"ID":"c1a2b3c4d5e6","Names":"web-api,web-api-alias","Image":"my-repo/web-api:v1.0","State":"running","Status":"Up 2 hours","CreatedAt":"1700000000","Ports":"0.0.0.0:8080->80/tcp, :::8080->80/tcp"}
-            {"ID":"d2e3f4a5b6c7","Names":"/db-redis","Image":"redis:7-alpine","State":"exited","Status":"Exited (0) 10 minutes ago","CreatedAt":"1699990000","Ports":"6379/tcp"}
-        """.trimIndent()
-
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        val containers = client.listContainers(all = true)
-
-        assertEquals(2, containers.size)
-
-        val first = containers[0]
-        assertEquals("c1a2b3c4d5e6", first.id)
-        assertEquals(listOf("web-api", "web-api-alias"), first.names)
-        assertEquals("web-api", first.primaryName)
-        assertEquals("my-repo/web-api:v1.0", first.image)
-        val firstState = first.state
-        assertIs<ContainerState.Running>(firstState)
-        assertEquals("running", firstState.status)
-        assertEquals("Up 2 hours", first.status)
-        assertEquals(1700000000L, first.created)
-        assertEquals(listOf("0.0.0.0:8080->80/tcp", ":::8080->80/tcp"), first.ports)
-
-        val second = containers[1]
-        assertEquals("d2e3f4a5b6c7", second.id)
-        assertEquals(listOf("/db-redis"), second.names)
-        assertEquals("db-redis", second.primaryName)
-        assertEquals("redis:7-alpine", second.image)
-        assertIs<ContainerState.Exited>(second.state)
-        assertEquals("Exited (0) 10 minutes ago", second.status)
-        assertEquals(1699990000L, second.created)
-        assertEquals(listOf("6379/tcp"), second.ports)
-    }
-
-    @Test
-    fun listContainers_differentContainerStates_mapsCorrectly() = runTest {
-        val jsonOutput = """
-            {"ID":"1","Names":"c-running","Image":"img1","State":"running","Status":"Up 1h","CreatedAt":"0","Ports":""}
-            {"ID":"2","Names":"c-paused","Image":"img2","State":"paused","Status":"Paused","CreatedAt":"0","Ports":""}
-            {"ID":"3","Names":"c-restarting","Image":"img3","State":"restarting","Status":"Restarting (1) 2s ago","CreatedAt":"0","Ports":""}
-            {"ID":"4","Names":"c-exited","Image":"img4","State":"exited","Status":"Exited (137) 5m ago","CreatedAt":"0","Ports":""}
-            {"ID":"5","Names":"c-dead","Image":"img5","State":"dead","Status":"Dead","CreatedAt":"0","Ports":""}
-            {"ID":"6","Names":"c-unknown","Image":"img6","State":"some_new_state","Status":"Special","CreatedAt":"0","Ports":""}
-        """.trimIndent()
-
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        val containers = client.listContainers(all = true)
-
-        assertEquals(6, containers.size)
-        assertIs<ContainerState.Running>(containers[0].state)
-        assertIs<ContainerState.Paused>(containers[1].state)
-        assertIs<ContainerState.Restarting>(containers[2].state)
-        assertIs<ContainerState.Exited>(containers[3].state)
-        assertIs<ContainerState.Dead>(containers[4].state)
-        assertIs<ContainerState.Unknown>(containers[5].state)
-        assertEquals("some_new_state", (containers[5].state as ContainerState.Unknown).rawStatus)
-    }
-
-    @Test
-    fun listContainers_handlesMalformedJsonGracefully() = runTest {
-        val mixedOutput = """
-            {"ID":"c1","Names":"valid-1","Image":"img1","State":"running","Status":"Up","CreatedAt":"0","Ports":""}
-            INVALID_NON_JSON_LINE
-            {"ID":"c2","Names":"valid-2","Image":"img2","State":"exited","Status":"Exited","CreatedAt":"0","Ports":""}
-        """.trimIndent()
-
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 0, stdout = mixedOutput, stderr = "")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        val containers = client.listContainers(all = true)
-
-        assertEquals(2, containers.size)
-        assertEquals("c1", containers[0].id)
-        assertEquals("c2", containers[1].id)
-    }
-
-    @Test
-    fun listContainers_whenCommandFails_returnsEmptyList() = runTest {
-        val fakeExecutor = FakeProcessExecutor().apply {
-            executeHandler = {
-                ProcessResult(exitCode = 1, stdout = "", stderr = "docker daemon not running")
-            }
-        }
-        val client = CliDockerClient(processExecutor = fakeExecutor)
-
-        val containers = client.listContainers(all = true)
-
-        assertTrue(containers.isEmpty())
     }
 
     @Test
@@ -498,5 +358,378 @@ class DockerClientTest {
         }
         assertTrue(exception.message?.contains("cannot restart container") == true)
     }
-}
 
+    // ==================== Docker Compose Service Tests ====================
+
+    @Test
+    fun getComposeServiceState_runningState_parsesCorrectly() = runTest {
+        val jsonOutput = """{"ID":"abc123","Name":"project-web-1","State":"running","ExitCode":0}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "ps", "-a", "--format", "json", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/myproject", serviceName = "web")
+
+        assertIs<ContainerState.Running>(state)
+        assertEquals("running", state.status)
+        assertTrue(state.isRunning)
+    }
+
+    @Test
+    fun getComposeServiceState_jsonArrayOutput_parsesFirstItem() = runTest {
+        val jsonArrayOutput = """[{"ID":"def456","Name":"project-api-1","State":"running","ExitCode":0}]"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                ProcessResult(exitCode = 0, stdout = jsonArrayOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/api", serviceName = "api")
+
+        assertIs<ContainerState.Running>(state)
+        assertTrue(state.isRunning)
+    }
+
+    @Test
+    fun getComposeServiceState_exitedStateWithExitCode_returnsExited() = runTest {
+        val jsonOutput = """{"ID":"789ghi","Name":"project-worker-1","State":"exited","ExitCode":137}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/worker", serviceName = "worker")
+
+        assertIs<ContainerState.Exited>(state)
+        assertEquals(137, state.exitCode)
+        assertEquals("exited", state.status)
+        assertTrue(state.isExited)
+    }
+
+    @Test
+    fun getComposeServiceState_pausedState_returnsPaused() = runTest {
+        val jsonOutput = """{"ID":"111aaa","Name":"project-db-1","State":"paused","ExitCode":0}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/db", serviceName = "db")
+
+        assertIs<ContainerState.Paused>(state)
+        assertTrue(state.isPaused)
+    }
+
+    @Test
+    fun getComposeServiceState_restartingState_returnsRestarting() = runTest {
+        val jsonOutput = """{"ID":"222bbb","Name":"project-cache-1","State":"restarting","ExitCode":1}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/cache", serviceName = "cache")
+
+        assertIs<ContainerState.Restarting>(state)
+    }
+
+    @Test
+    fun getComposeServiceState_deadState_returnsDead() = runTest {
+        val jsonOutput = """{"ID":"333ccc","Name":"project-dead-1","State":"dead","ExitCode":0}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/dead", serviceName = "dead")
+
+        assertIs<ContainerState.Dead>(state)
+    }
+
+    @Test
+    fun getComposeServiceState_nonExistentServiceOrEmptyOutput_returnsNotFound() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 0, stdout = "", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/test", serviceName = "nonexistent")
+
+        assertIs<ContainerState.NotFound>(state)
+        assertTrue(state.isNotFound)
+    }
+
+    @Test
+    fun getComposeServiceState_commandFailure_returnsNotFound() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "no such service: foo")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(projectDir = "/apps/test", serviceName = "foo")
+
+        assertIs<ContainerState.NotFound>(state)
+        assertTrue(state.isNotFound)
+    }
+
+    @Test
+    fun getComposeServiceState_withRelativeComposeFile_resolvesRelativeToProjectDirectory() = runTest {
+        val jsonOutput = """{"ID":"custom1","Name":"custom-service","State":"running","ExitCode":0}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/apps/prod/docker-compose.prod.yml", "ps", "-a", "--format", "json", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(
+            projectDir = "/apps/prod",
+            serviceName = "web",
+            composeFile = "docker-compose.prod.yml"
+        )
+
+        assertIs<ContainerState.Running>(state)
+    }
+
+    @Test
+    fun getComposeServiceState_withAbsoluteComposeFile_preservesAbsolutePath() = runTest {
+        val jsonOutput = """{"ID":"custom2","Name":"custom-service-2","State":"running","ExitCode":0}"""
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/prod", "-f", "/opt/configs/compose.yml", "ps", "-a", "--format", "json", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = jsonOutput, stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val state = client.getComposeServiceState(
+            projectDir = "/apps/prod",
+            serviceName = "web",
+            composeFile = "/opt/configs/compose.yml"
+        )
+
+        assertIs<ContainerState.Running>(state)
+    }
+
+    @Test
+    fun streamComposeLogs_emitsLogLinesSuccessfully() = runTest {
+        val expectedLines = listOf(
+            "web_1 | [INFO] Server started on port 8000",
+            "web_1 | [DEBUG] Database pool initialized",
+            "web_1 | [INFO] Ready for connections"
+        )
+        val fakeExecutor = FakeProcessExecutor().apply {
+            streamHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/web", "logs", "-f", "--tail", "50", "web"),
+                    cmd
+                )
+                flow {
+                    expectedLines.forEach { emit(it) }
+                }
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val lines = client.streamComposeLogs(projectDir = "/apps/web", serviceName = "web", tail = 50).toList()
+
+        assertEquals(expectedLines, lines)
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun streamComposeLogs_withCustomComposeFile_resolvesRelativeToProjectDirectory() = runTest {
+        val expectedLines = listOf("api_1 | Starting production worker")
+        val fakeExecutor = FakeProcessExecutor().apply {
+            streamHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/api", "-f", "/apps/api/compose.prod.yml", "logs", "-f", "--tail", "100", "api"),
+                    cmd
+                )
+                flow {
+                    expectedLines.forEach { emit(it) }
+                }
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val lines = client.streamComposeLogs(
+            projectDir = "/apps/api",
+            serviceName = "api",
+            composeFile = "compose.prod.yml",
+            tail = 100
+        ).toList()
+
+        assertEquals(expectedLines, lines)
+    }
+
+    @Test
+    fun streamComposeLogs_cancellation_cleansUpProcess() = runTest {
+        val wasCleanedUp = AtomicBoolean(false)
+        val fakeExecutor = FakeProcessExecutor().apply {
+            streamHandler = {
+                flow {
+                    try {
+                        emit("compose log line 1")
+                        emit("compose log line 2")
+                        kotlinx.coroutines.awaitCancellation()
+                    } finally {
+                        wasCleanedUp.set(true)
+                    }
+                }
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+
+        val collected = mutableListOf<String>()
+        val job = launch {
+            client.streamComposeLogs(projectDir = "/apps/web", serviceName = "web").collect {
+                collected.add(it)
+            }
+        }
+
+        kotlinx.coroutines.delay(50)
+        assertEquals(listOf("compose log line 1", "compose log line 2"), collected)
+        job.cancel()
+        job.join()
+
+        assertTrue(wasCleanedUp.get(), "Compose process stream should be cancelled and cleaned up")
+    }
+
+    @Test
+    fun startComposeService_triesStartFirst_andSucceeds() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "start", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Started\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.startComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun startComposeService_whenStartFails_fallsBackToUpDetached() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                if (cmd.contains("start")) {
+                    ProcessResult(exitCode = 1, stdout = "", stderr = "No such container")
+                } else {
+                    assertEquals(
+                        listOf("docker", "compose", "--project-directory", "/apps/myproject", "up", "-d", "web"),
+                        cmd
+                    )
+                    ProcessResult(exitCode = 0, stdout = "Container web Created and Started\n", stderr = "")
+                }
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.startComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(2, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun startComposeService_whenBothFail_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Compose start failed")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.startComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Compose start failed") == true)
+    }
+
+    @Test
+    fun stopComposeService_callsDockerComposeStop() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "stop", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Stopped\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.stopComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun stopComposeService_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Failed to stop service")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.stopComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Failed to stop service") == true)
+    }
+
+    @Test
+    fun restartComposeService_callsDockerComposeRestart() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = { cmd ->
+                assertEquals(
+                    listOf("docker", "compose", "--project-directory", "/apps/myproject", "restart", "web"),
+                    cmd
+                )
+                ProcessResult(exitCode = 0, stdout = "Container web Restarted\n", stderr = "")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        client.restartComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        assertEquals(1, fakeExecutor.recordedCommands.size)
+    }
+
+    @Test
+    fun restartComposeService_whenCommandFails_throwsRuntimeException() = runTest {
+        val fakeExecutor = FakeProcessExecutor().apply {
+            executeHandler = {
+                ProcessResult(exitCode = 1, stdout = "", stderr = "Failed to restart service")
+            }
+        }
+        val client = CliDockerClient(processExecutor = fakeExecutor)
+        val exception = kotlin.test.assertFailsWith<RuntimeException> {
+            client.restartComposeService(projectDir = "/apps/myproject", serviceName = "web")
+        }
+        assertTrue(exception.message?.contains("Failed to restart service") == true)
+    }
+}

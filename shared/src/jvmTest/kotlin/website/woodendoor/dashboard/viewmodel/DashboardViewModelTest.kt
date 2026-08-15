@@ -41,7 +41,6 @@ class DashboardViewModelTest {
     private lateinit var fakeConfigRepository: FakeConfigRepository
     private lateinit var fakeHealthChecker: FakePortHealthChecker
     private lateinit var fakeDockerClient: FakeDockerClient
-    private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var fakeProcessManager: FakeProcessManager
     private val activeViewModels = mutableListOf<DashboardViewModel>()
 
@@ -158,16 +157,27 @@ class DashboardViewModelTest {
         var shouldThrowOnStop: Boolean = false
         var shouldThrowOnRestart: Boolean = false
 
+        // Compose properties
+        val composeStates = mutableMapOf<String, ContainerState>()
+        val composeFlowMap = mutableMapOf<String, MutableSharedFlow<String>>()
+        var onStartComposeService: (suspend (String) -> Unit)? = null
+        var onStopComposeService: (suspend (String) -> Unit)? = null
+        var onRestartComposeService: (suspend (String) -> Unit)? = null
+        var shouldThrowOnComposeStart: Boolean = false
+        var shouldThrowOnComposeStop: Boolean = false
+        var shouldThrowOnComposeRestart: Boolean = false
+
         fun getOrCreateFlow(nameOrId: String): MutableSharedFlow<String> =
             flowMap.getOrPut(nameOrId) { MutableSharedFlow(extraBufferCapacity = 64) }
+
+        fun getOrCreateComposeFlow(key: String): MutableSharedFlow<String> =
+            composeFlowMap.getOrPut(key) { MutableSharedFlow(extraBufferCapacity = 64) }
 
         override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
 
         override suspend fun getContainerState(nameOrId: String): ContainerState {
             return containerStates[nameOrId] ?: ContainerState.Running(status = "Up 2 hours")
         }
-
-        override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
 
         override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = getOrCreateFlow(nameOrId)
 
@@ -188,52 +198,32 @@ class DashboardViewModelTest {
             onRestartContainer?.invoke(nameOrId)
             containerStates[nameOrId] = ContainerState.Running(status = "running")
         }
-    }
 
-    private class FakeDockerComposeClient(
-        var isComposeAvailableResult: Boolean = true
-    ) : website.woodendoor.dashboard.service.DockerComposeClient {
-        val composeStates = mutableMapOf<String, ContainerState>()
-        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
-        var onStartService: (suspend (String) -> Unit)? = null
-        var onStopService: (suspend (String) -> Unit)? = null
-        var onRestartService: (suspend (String) -> Unit)? = null
-        var shouldThrowOnStart: Boolean = false
-        var shouldThrowOnStop: Boolean = false
-        var shouldThrowOnRestart: Boolean = false
-
-        fun getOrCreateFlow(key: String): MutableSharedFlow<String> =
-            flowMap.getOrPut(key) { MutableSharedFlow(extraBufferCapacity = 64) }
-
-        override suspend fun isComposeAvailable(): Boolean = isComposeAvailableResult
-
-        override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState {
+        override suspend fun getComposeServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState {
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             return composeStates[key] ?: ContainerState.Running(status = "Up 1 hour")
         }
 
-        override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
+        override fun streamComposeLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> =
+            getOrCreateComposeFlow(serviceName)
 
-        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> =
-            getOrCreateFlow(serviceName)
-
-        override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnStart) throw RuntimeException("Failed to start compose service $serviceName")
-            onStartService?.invoke(serviceName)
+        override suspend fun startComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeStart) throw RuntimeException("Failed to start compose service $serviceName")
+            onStartComposeService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Running(status = "running")
         }
 
-        override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnStop) throw RuntimeException("Failed to stop compose service $serviceName")
-            onStopService?.invoke(serviceName)
+        override suspend fun stopComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeStop) throw RuntimeException("Failed to stop compose service $serviceName")
+            onStopComposeService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Exited(exitCode = 0, status = "exited")
         }
 
-        override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart compose service $serviceName")
-            onRestartService?.invoke(serviceName)
+        override suspend fun restartComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeRestart) throw RuntimeException("Failed to restart compose service $serviceName")
+            onRestartComposeService?.invoke(serviceName)
             val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
             composeStates[key] = ContainerState.Running(status = "running")
         }
@@ -297,7 +287,7 @@ class DashboardViewModelTest {
     private fun getOrCreateLogFlow(service: ServiceItem): MutableSharedFlow<String> {
         return when (val src = service.logSource) {
             is LogSource.Docker -> fakeDockerClient.getOrCreateFlow(src.containerName)
-            is LogSource.DockerCompose -> fakeDockerComposeClient.getOrCreateFlow(src.serviceName)
+            is LogSource.DockerCompose -> fakeDockerClient.getOrCreateComposeFlow(src.serviceName)
             is LogSource.Command -> fakeProcessManager.getOrCreateFlow(service.id)
             is LogSource.LocalFile, is LogSource.None -> MutableSharedFlow(extraBufferCapacity = 64)
         }
@@ -308,7 +298,6 @@ class DashboardViewModelTest {
         fakeConfigRepository = FakeConfigRepository(sampleConfig)
         fakeHealthChecker = FakePortHealthChecker()
         fakeDockerClient = FakeDockerClient(isDockerAvailableResult = true)
-        fakeDockerComposeClient = FakeDockerComposeClient(isComposeAvailableResult = true)
         fakeProcessManager = FakeProcessManager()
         activeViewModels.clear()
     }
@@ -327,7 +316,6 @@ class DashboardViewModelTest {
     ): DashboardViewModel {
         val runtime = serviceRuntimeManager ?: DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
-            dockerComposeClient = fakeDockerComposeClient,
             processManager = fakeProcessManager,
             portHealthChecker = fakeHealthChecker,
             ioDispatcher = dispatcher
@@ -712,7 +700,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         val composeKey = "compose:/apps/conflux:backend"
-        fakeDockerComposeClient.composeStates[composeKey] = ContainerState.Exited(exitCode = 143)
+        fakeDockerClient.composeStates[composeKey] = ContainerState.Exited(exitCode = 143)
 
         // Advance by polling interval
         advanceTimeBy(5100)

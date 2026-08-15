@@ -1,5 +1,6 @@
 package website.woodendoor.dashboard.service
 
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +17,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import website.woodendoor.dashboard.model.ContainerState
-import website.woodendoor.dashboard.model.DockerContainerInfo
 
 data class ProcessResult(
     val exitCode: Int,
@@ -105,6 +105,26 @@ class CliDockerClient(
         coerceInputValues = true
     }
 
+    private fun buildComposeCommand(
+        projectDir: String,
+        composeFile: String?,
+        subcommandAndArgs: List<String>
+    ): List<String> {
+        val cmd = mutableListOf(dockerExecutable, "compose", "--project-directory", projectDir)
+        if (!composeFile.isNullOrBlank()) {
+            val fileObj = File(composeFile)
+            val resolvedFile = if (fileObj.isAbsolute) {
+                composeFile
+            } else {
+                File(projectDir, composeFile).path
+            }
+            cmd.add("-f")
+            cmd.add(resolvedFile)
+        }
+        cmd.addAll(subcommandAndArgs)
+        return cmd
+    }
+
     override suspend fun isDockerAvailable(): Boolean {
         val cmd = listOf(dockerExecutable, "version", "--format", "{{.Server.Version}}")
         return try {
@@ -113,32 +133,6 @@ class CliDockerClient(
         } catch (_: Exception) {
             false
         }
-    }
-
-    override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> {
-        val cmd = mutableListOf(dockerExecutable, "ps")
-        if (all) {
-            cmd.add("-a")
-        }
-        cmd.addAll(listOf("--format", "{{json .}}"))
-
-        val result = executor.execute(cmd)
-        if (result.exitCode != 0 || result.stdout.isBlank()) {
-            return emptyList()
-        }
-
-        val list = mutableListOf<DockerContainerInfo>()
-        for (line in result.stdout.lines()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || !trimmed.startsWith("{")) continue
-            try {
-                val raw = json.decodeFromString<RawDockerPsOutput>(trimmed)
-                list.add(raw.toDockerContainerInfo())
-            } catch (_: Exception) {
-                // Ignore malformed lines
-            }
-        }
-        return list
     }
 
     override suspend fun getContainerState(nameOrId: String): ContainerState {
@@ -201,37 +195,101 @@ class CliDockerClient(
         }
     }
 
-    @Serializable
-    private data class RawDockerPsOutput(
-        @SerialName("ID") val id: String = "",
-        @SerialName("Names") val names: String = "",
-        @SerialName("Image") val image: String = "",
-        @SerialName("State") val state: String = "",
-        @SerialName("Status") val status: String = "",
-        @SerialName("CreatedAt") val createdAt: String = "",
-        @SerialName("Ports") val ports: String = ""
-    ) {
-        fun toDockerContainerInfo(): DockerContainerInfo {
-            val parsedNames = names.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+    override suspend fun getComposeServiceState(
+        projectDir: String,
+        serviceName: String,
+        composeFile: String?
+    ): ContainerState {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("ps", "-a", "--format", "json", serviceName)
+        )
+        val result = executor.execute(cmd)
+        if (result.exitCode != 0) {
+            val errorMsg = result.stderr.ifBlank { result.stdout }.ifBlank { "Service not found" }.trim()
+            return ContainerState.NotFound(reason = errorMsg)
+        }
 
-            val parsedPorts = ports.split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+        val stdoutTrimmed = result.stdout.trim()
+        if (stdoutTrimmed.isEmpty()) {
+            return ContainerState.NotFound(reason = "No containers found for service $serviceName")
+        }
 
-            val createdTimestamp = createdAt.toLongOrNull() ?: 0L
-            val containerState = parseContainerState(state, status)
+        return try {
+            if (stdoutTrimmed.startsWith("[")) {
+                val list = json.decodeFromString<List<RawComposePsOutput>>(stdoutTrimmed)
+                val first = list.firstOrNull() ?: return ContainerState.NotFound(reason = "No containers found for service $serviceName")
+                first.toContainerState()
+            } else {
+                val firstLine = stdoutTrimmed.lines().firstOrNull { it.trim().startsWith("{") }?.trim()
+                    ?: return ContainerState.Unknown(rawStatus = stdoutTrimmed)
+                val raw = json.decodeFromString<RawComposePsOutput>(firstLine)
+                raw.toContainerState()
+            }
+        } catch (_: Exception) {
+            ContainerState.Unknown(rawStatus = stdoutTrimmed)
+        }
+    }
 
-            return DockerContainerInfo(
-                id = id,
-                names = parsedNames,
-                image = image,
-                state = containerState,
-                status = status,
-                created = createdTimestamp,
-                ports = parsedPorts
+    override fun streamComposeLogs(
+        projectDir: String,
+        serviceName: String,
+        composeFile: String?,
+        tail: Int
+    ): Flow<String> {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("logs", "-f", "--tail", tail.toString(), serviceName)
+        )
+        return executor.executeStreaming(cmd)
+    }
+
+    override suspend fun startComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("start", serviceName)
+        )
+        val result = executor.execute(cmd)
+        if (result.exitCode != 0) {
+            val upCmd = buildComposeCommand(
+                projectDir = projectDir,
+                composeFile = composeFile,
+                subcommandAndArgs = listOf("up", "-d", serviceName)
             )
+            val upResult = executor.execute(upCmd, timeoutMs = 30000)
+            if (upResult.exitCode != 0) {
+                val error = upResult.stderr.ifBlank { upResult.stdout }.ifBlank { "Failed to start service $serviceName" }
+                throw RuntimeException(error.trim())
+            }
+        }
+    }
+
+    override suspend fun stopComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("stop", serviceName)
+        )
+        val result = executor.execute(cmd, timeoutMs = 15000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop service $serviceName" }
+            throw RuntimeException(error.trim())
+        }
+    }
+
+    override suspend fun restartComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+        val cmd = buildComposeCommand(
+            projectDir = projectDir,
+            composeFile = composeFile,
+            subcommandAndArgs = listOf("restart", serviceName)
+        )
+        val result = executor.execute(cmd, timeoutMs = 20000)
+        if (result.exitCode != 0) {
+            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart service $serviceName" }
+            throw RuntimeException(error.trim())
         }
     }
 
@@ -254,6 +312,28 @@ class CliDockerClient(
                 running || normalized == "running" -> ContainerState.Running(status = status.ifEmpty { "running" })
                 normalized == "exited" || exitCode != 0 -> ContainerState.Exited(exitCode = exitCode, status = status.ifEmpty { "exited" })
                 else -> parseContainerState(status)
+            }
+        }
+    }
+
+    @Serializable
+    private data class RawComposePsOutput(
+        @SerialName("ID") val id: String = "",
+        @SerialName("Name") val name: String = "",
+        @SerialName("State") val state: String = "",
+        @SerialName("ExitCode") val exitCode: Int = 0,
+        @SerialName("Status") val status: String = ""
+    ) {
+        fun toContainerState(): ContainerState {
+            val normalized = state.trim().lowercase()
+            return when {
+                normalized == "running" -> ContainerState.Running(status = state.ifEmpty { "running" })
+                normalized == "paused" -> ContainerState.Paused(status = state.ifEmpty { "paused" })
+                normalized == "restarting" -> ContainerState.Restarting(status = state.ifEmpty { "restarting" })
+                normalized == "dead" -> ContainerState.Dead(status = state.ifEmpty { "dead" })
+                normalized == "exited" -> ContainerState.Exited(exitCode = exitCode, status = state.ifEmpty { "exited" })
+                normalized.isEmpty() -> ContainerState.Unknown(rawStatus = "")
+                else -> ContainerState.Unknown(rawStatus = state)
             }
         }
     }
