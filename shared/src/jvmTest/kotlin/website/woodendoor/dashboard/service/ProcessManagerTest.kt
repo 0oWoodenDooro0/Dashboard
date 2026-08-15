@@ -248,16 +248,22 @@ class ProcessManagerTest {
             )
 
             val serviceId = "overflow-service"
+            val flow = smallBufferManager.streamLogs(serviceId = serviceId, tail = 0)
+            val collector = async {
+                withTimeout(5000) {
+                    flow.toList()
+                }
+            }
+
+            delay(50)
+
             smallBufferManager.startProcess(
                 serviceId = serviceId,
                 workingDir = tempDir.absolutePath,
                 command = cmd
             )
 
-            val flow = smallBufferManager.streamLogs(serviceId = serviceId, tail = 0)
-            val logs = withTimeout(5000) {
-                flow.toList()
-            }
+            val logs = collector.await()
 
             assertTrue(
                 logs.any { it.contains("line 15") },
