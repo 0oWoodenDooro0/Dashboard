@@ -26,7 +26,6 @@ import kotlinx.coroutines.coroutineScope
 
 class DefaultServiceRuntimeManager(
     private val dockerClient: DockerClient = CliDockerClient(),
-    private val dockerComposeClient: DockerComposeClient = CliDockerComposeClient(),
     private val processManager: ProcessManager = DefaultProcessManager(),
     private val portHealthChecker: PortHealthChecker = SocketPortHealthChecker(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -40,7 +39,7 @@ class DefaultServiceRuntimeManager(
     override suspend fun getServiceState(service: ServiceItem): ContainerState {
         return when (val src = service.logSource) {
             is LogSource.Docker -> dockerClient.getContainerState(src.containerName)
-            is LogSource.DockerCompose -> dockerComposeClient.getServiceState(
+            is LogSource.DockerCompose -> dockerClient.getComposeServiceState(
                 projectDir = src.projectDir,
                 serviceName = src.serviceName,
                 composeFile = src.composeFile
@@ -103,7 +102,7 @@ class DefaultServiceRuntimeManager(
                 }
                 is LogSource.DockerCompose -> {
                     if (isDocker) {
-                        dockerComposeClient.getServiceState(
+                        dockerClient.getComposeServiceState(
                             projectDir = src.projectDir,
                             serviceName = src.serviceName,
                             composeFile = src.composeFile
@@ -143,7 +142,7 @@ class DefaultServiceRuntimeManager(
     override fun streamLogs(service: ServiceItem, tail: Int): Flow<String> {
         return when (val src = service.logSource) {
             is LogSource.Docker -> dockerClient.streamLogs(src.containerName, tail = tail)
-            is LogSource.DockerCompose -> dockerComposeClient.streamLogs(
+            is LogSource.DockerCompose -> dockerClient.streamComposeLogs(
                 projectDir = src.projectDir,
                 serviceName = src.serviceName,
                 composeFile = src.composeFile,
@@ -158,7 +157,7 @@ class DefaultServiceRuntimeManager(
     override suspend fun startService(service: ServiceItem) {
         when (val src = service.logSource) {
             is LogSource.Docker -> dockerClient.startContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerComposeClient.startService(
+            is LogSource.DockerCompose -> dockerClient.startComposeService(
                 projectDir = src.projectDir,
                 serviceName = src.serviceName,
                 composeFile = src.composeFile
@@ -178,7 +177,7 @@ class DefaultServiceRuntimeManager(
     override suspend fun stopService(service: ServiceItem) {
         when (val src = service.logSource) {
             is LogSource.Docker -> dockerClient.stopContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerComposeClient.stopService(
+            is LogSource.DockerCompose -> dockerClient.stopComposeService(
                 projectDir = src.projectDir,
                 serviceName = src.serviceName,
                 composeFile = src.composeFile
@@ -197,7 +196,7 @@ class DefaultServiceRuntimeManager(
     override suspend fun restartService(service: ServiceItem) {
         when (val src = service.logSource) {
             is LogSource.Docker -> dockerClient.restartContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerComposeClient.restartService(
+            is LogSource.DockerCompose -> dockerClient.restartComposeService(
                 projectDir = src.projectDir,
                 serviceName = src.serviceName,
                 composeFile = src.composeFile

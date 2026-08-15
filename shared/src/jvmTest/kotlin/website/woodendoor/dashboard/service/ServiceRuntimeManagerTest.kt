@@ -40,7 +40,6 @@ class ServiceRuntimeManagerTest {
 
     private lateinit var tempDir: File
     private lateinit var fakeDockerClient: FakeDockerClient
-    private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var fakeProcessManager: FakeProcessManager
     private lateinit var fakePortHealthChecker: FakePortHealthChecker
     private lateinit var runtimeManager: DefaultServiceRuntimeManager
@@ -97,8 +96,21 @@ class ServiceRuntimeManagerTest {
         var lastRequestedTail: Int? = null
         var customLogFlow: Flow<String> = flowOf("docker line 1", "docker line 2")
 
+        // Compose properties
+        val composeStates = mutableMapOf<String, ContainerState>()
+        val composeStartCalls = mutableListOf<Triple<String, String, String?>>()
+        val composeStopCalls = mutableListOf<Triple<String, String, String?>>()
+        val composeRestartCalls = mutableListOf<Triple<String, String, String?>>()
+        var shouldThrowOnComposeStart = false
+        var shouldThrowOnComposeStop = false
+        var shouldThrowOnComposeRestart = false
+        var lastRequestedComposeProjectDir: String? = null
+        var lastRequestedComposeServiceName: String? = null
+        var lastRequestedComposeFile: String? = null
+        var lastRequestedComposeTail: Int? = null
+        var customComposeLogFlow: Flow<String> = flowOf("compose line 1", "compose line 2")
+
         override suspend fun isDockerAvailable(): Boolean = isAvailable
-        override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
         override suspend fun getContainerState(nameOrId: String): ContainerState =
             states[nameOrId] ?: ContainerState.Running(status = "running")
 
@@ -125,52 +137,34 @@ class ServiceRuntimeManagerTest {
             restartCalls.add(nameOrId)
             states[nameOrId] = ContainerState.Running(status = "running")
         }
-    }
 
-    private class FakeDockerComposeClient : DockerComposeClient {
-        var isAvailable = true
-        val states = mutableMapOf<String, ContainerState>()
-        val startCalls = mutableListOf<Triple<String, String, String?>>()
-        val stopCalls = mutableListOf<Triple<String, String, String?>>()
-        val restartCalls = mutableListOf<Triple<String, String, String?>>()
-        var shouldThrowOnStart = false
-        var shouldThrowOnStop = false
-        var shouldThrowOnRestart = false
-        var lastRequestedProjectDir: String? = null
-        var lastRequestedServiceName: String? = null
-        var lastRequestedComposeFile: String? = null
-        var lastRequestedTail: Int? = null
-        var customLogFlow: Flow<String> = flowOf("compose line 1", "compose line 2")
+        override suspend fun getComposeServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState =
+            composeStates["$projectDir:$serviceName:$composeFile"] ?: ContainerState.Running(status = "running")
 
-        override suspend fun isComposeAvailable(): Boolean = isAvailable
-        override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState =
-            states["$projectDir:$serviceName:$composeFile"] ?: ContainerState.Running(status = "running")
-
-        override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
-        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> {
-            lastRequestedProjectDir = projectDir
-            lastRequestedServiceName = serviceName
+        override fun streamComposeLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> {
+            lastRequestedComposeProjectDir = projectDir
+            lastRequestedComposeServiceName = serviceName
             lastRequestedComposeFile = composeFile
-            lastRequestedTail = tail
-            return customLogFlow
+            lastRequestedComposeTail = tail
+            return customComposeLogFlow
         }
 
-        override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnStart) throw RuntimeException("Compose start failed for $serviceName")
-            startCalls.add(Triple(projectDir, serviceName, composeFile))
-            states["$projectDir:$serviceName:$composeFile"] = ContainerState.Running(status = "running")
+        override suspend fun startComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeStart) throw RuntimeException("Compose start failed for $serviceName")
+            composeStartCalls.add(Triple(projectDir, serviceName, composeFile))
+            composeStates["$projectDir:$serviceName:$composeFile"] = ContainerState.Running(status = "running")
         }
 
-        override suspend fun stopService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnStop) throw RuntimeException("Compose stop failed for $serviceName")
-            stopCalls.add(Triple(projectDir, serviceName, composeFile))
-            states["$projectDir:$serviceName:$composeFile"] = ContainerState.Exited(exitCode = 0, status = "exited")
+        override suspend fun stopComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeStop) throw RuntimeException("Compose stop failed for $serviceName")
+            composeStopCalls.add(Triple(projectDir, serviceName, composeFile))
+            composeStates["$projectDir:$serviceName:$composeFile"] = ContainerState.Exited(exitCode = 0, status = "exited")
         }
 
-        override suspend fun restartService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnRestart) throw RuntimeException("Compose restart failed for $serviceName")
-            restartCalls.add(Triple(projectDir, serviceName, composeFile))
-            states["$projectDir:$serviceName:$composeFile"] = ContainerState.Running(status = "running")
+        override suspend fun restartComposeService(projectDir: String, serviceName: String, composeFile: String?) {
+            if (shouldThrowOnComposeRestart) throw RuntimeException("Compose restart failed for $serviceName")
+            composeRestartCalls.add(Triple(projectDir, serviceName, composeFile))
+            composeStates["$projectDir:$serviceName:$composeFile"] = ContainerState.Running(status = "running")
         }
     }
 
@@ -241,12 +235,10 @@ class ServiceRuntimeManagerTest {
     fun setUp() {
         tempDir = Files.createTempDirectory("runtime-manager-test").toFile()
         fakeDockerClient = FakeDockerClient()
-        fakeDockerComposeClient = FakeDockerComposeClient()
         fakeProcessManager = FakeProcessManager()
         fakePortHealthChecker = FakePortHealthChecker()
         runtimeManager = DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
-            dockerComposeClient = fakeDockerComposeClient,
             processManager = fakeProcessManager,
             portHealthChecker = fakePortHealthChecker,
             filePollDelayMs = 20L
@@ -305,8 +297,8 @@ class ServiceRuntimeManagerTest {
     fun dockerComposeTarget_lifecycleOperations_delegateCorrectly() = runTest {
         // Start
         runtimeManager.startService(composeService)
-        assertEquals(1, fakeDockerComposeClient.startCalls.size)
-        val (projDir, srvName, file) = fakeDockerComposeClient.startCalls.first()
+        assertEquals(1, fakeDockerClient.composeStartCalls.size)
+        val (projDir, srvName, file) = fakeDockerClient.composeStartCalls.first()
         assertEquals("/apps/my-app", projDir)
         assertEquals("web", srvName)
         assertEquals("docker-compose.yml", file)
@@ -317,11 +309,11 @@ class ServiceRuntimeManagerTest {
 
         // Restart
         runtimeManager.restartService(composeService)
-        assertEquals(1, fakeDockerComposeClient.restartCalls.size)
+        assertEquals(1, fakeDockerClient.composeRestartCalls.size)
 
         // Stop
         runtimeManager.stopService(composeService)
-        assertEquals(1, fakeDockerComposeClient.stopCalls.size)
+        assertEquals(1, fakeDockerClient.composeStopCalls.size)
 
         val stoppedState = runtimeManager.getServiceState(composeService)
         assertIs<ContainerState.Exited>(stoppedState)
@@ -386,14 +378,14 @@ class ServiceRuntimeManagerTest {
     }
 
     @Test
-    fun streamLogs_dockerComposeTarget_delegatesToDockerComposeClientWithTail() = runTest {
-        fakeDockerComposeClient.customLogFlow = listOf("compose: web started").asFlow()
+    fun streamLogs_dockerComposeTarget_delegatesToDockerClientWithTail() = runTest {
+        fakeDockerClient.customComposeLogFlow = listOf("compose: web started").asFlow()
         val result = runtimeManager.streamLogs(composeService, tail = 75).toList()
 
-        assertEquals("/apps/my-app", fakeDockerComposeClient.lastRequestedProjectDir)
-        assertEquals("web", fakeDockerComposeClient.lastRequestedServiceName)
-        assertEquals("docker-compose.yml", fakeDockerComposeClient.lastRequestedComposeFile)
-        assertEquals(75, fakeDockerComposeClient.lastRequestedTail)
+        assertEquals("/apps/my-app", fakeDockerClient.lastRequestedComposeProjectDir)
+        assertEquals("web", fakeDockerClient.lastRequestedComposeServiceName)
+        assertEquals("docker-compose.yml", fakeDockerClient.lastRequestedComposeFile)
+        assertEquals(75, fakeDockerClient.lastRequestedComposeTail)
         assertEquals(listOf("compose: web started"), result)
     }
 
@@ -522,7 +514,6 @@ class ServiceRuntimeManagerTest {
 
         val managerWithCustomDispatcher = DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
-            dockerComposeClient = fakeDockerComposeClient,
             processManager = fakeProcessManager,
             ioDispatcher = customIoDispatcher,
             filePollDelayMs = 20L
@@ -763,7 +754,7 @@ class ServiceRuntimeManagerTest {
             )
         )
         fakeDockerClient.isAvailable = true
-        fakeDockerComposeClient.states["/apps/web:frontend:compose.yaml"] = ContainerState.Running("running")
+        fakeDockerClient.composeStates["/apps/web:frontend:compose.yaml"] = ContainerState.Running("running")
         fakePortHealthChecker.customHealthMap["127.0.0.1:3000"] = PortHealth.Open(latencyMs = 7)
 
         val singleStatus = runtimeManager.inspectService(srv)
