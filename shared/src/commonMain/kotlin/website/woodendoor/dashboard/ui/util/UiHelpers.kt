@@ -3,7 +3,7 @@ package website.woodendoor.dashboard.ui.util
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 
 data class SummaryMetrics(
     val totalCount: Int,
@@ -45,7 +45,7 @@ object UiHelpers {
 
     fun calculateSummaryMetrics(
         services: List<ServiceItem>,
-        statuses: Map<String, ServiceStatus>,
+        statuses: Map<String, ServiceRuntimeStatus>,
         isDockerAvailable: Boolean
     ): SummaryMetrics {
         val totalCount = services.size

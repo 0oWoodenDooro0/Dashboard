@@ -18,12 +18,6 @@ data class DashboardUiState(
     val operatingServiceIds: Set<String> = emptySet()
 ) {
     /**
-     * Map of container/process states extracted from [serviceStatuses].
-     */
-    val containerStates: Map<String, ContainerState>
-        get() = serviceStatuses.mapValues { it.value.containerState }
-
-    /**
      * Flattened list of all configured services across all groups.
      */
     val allServices: List<ServiceItem>

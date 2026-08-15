@@ -19,7 +19,6 @@ import kotlin.test.assertTrue
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
 
 class ComponentIconButtonsTest {
 

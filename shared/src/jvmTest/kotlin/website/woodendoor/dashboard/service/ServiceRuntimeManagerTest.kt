@@ -33,7 +33,6 @@ import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceRuntimeStatus
-import website.woodendoor.dashboard.model.ServiceStatus
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceRuntimeManagerTest {

@@ -39,16 +39,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 
 @Composable
 fun ServiceListPane(
     groups: List<ServiceGroup>,
-    serviceStatuses: Map<String, ServiceStatus>,
-    containerStates: Map<String, ContainerState>,
+    serviceStatuses: Map<String, ServiceRuntimeStatus>,
     selectedServiceId: String?,
     operatingServiceIds: Set<String> = emptySet(),
     onSelectService: (String) -> Unit,
@@ -217,7 +215,6 @@ fun ServiceListPane(
                             ServiceCard(
                                 service = service,
                                 status = serviceStatuses[service.id],
-                                containerState = containerStates[service.id],
                                 isSelected = service.id == selectedServiceId,
                                 isOperating = service.id in operatingServiceIds,
                                 onSelect = { onSelectService(service.id) },
