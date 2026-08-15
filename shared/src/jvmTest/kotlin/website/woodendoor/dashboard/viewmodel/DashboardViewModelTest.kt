@@ -131,12 +131,10 @@ class DashboardViewModelTest {
 
     private class FakePortHealthChecker : PortHealthChecker {
         var checkPortCallCount = 0
-        var checkServicesCallCount = 0
         var customHealthMap = mutableMapOf<String, PortHealth>()
 
         override suspend fun checkPort(host: String, port: Int, timeoutMs: Long): PortHealth {
             checkPortCallCount++
-            checkServicesCallCount++
             return customHealthMap["$host:$port"]
                 ?: customHealthMap[port.toString()]
                 ?: customHealthMap["web-1"].takeIf { port == 3000 }
@@ -145,22 +143,6 @@ class DashboardViewModelTest {
                 ?: customHealthMap["compose-1"].takeIf { port == 8080 }
                 ?: customHealthMap["cmd-1"].takeIf { port == 5173 }
                 ?: PortHealth.Open(latencyMs = 15)
-        }
-
-        override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> {
-            checkServicesCallCount++
-            return services.associate { service ->
-                val health = if (service.port != null) {
-                    checkPort(service.host, service.port, 1000)
-                } else {
-                    PortHealth.None
-                }
-                service.id to ServiceStatus(
-                    serviceId = service.id,
-                    portHealth = health,
-                    isHealthy = (health is PortHealth.Open || health is PortHealth.None)
-                )
-            }
         }
     }
 
