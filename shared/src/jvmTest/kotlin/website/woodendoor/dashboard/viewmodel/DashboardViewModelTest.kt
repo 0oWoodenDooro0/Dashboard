@@ -404,7 +404,7 @@ class DashboardViewModelTest {
         assertTrue(fakeHealthChecker.checkServicesCallCount >= 2)
         assertIs<PortHealth.Closed>(state.serviceStatuses["web-1"]?.portHealth)
         assertEquals("Connection refused", (state.serviceStatuses["web-1"]?.portHealth as PortHealth.Closed).reason)
-        assertIs<ContainerState.Exited>(state.containerStates["postgres-db"])
+        assertIs<ContainerState.Exited>(state.containerStates["db-1"])
     }
 
     @Test
@@ -720,7 +720,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         val state = viewModel.state.value
-        val containerState = state.containerStates[composeKey]
+        val containerState = state.containerStates["compose-1"]
         assertNotNull(containerState)
         assertIs<ContainerState.Exited>(containerState)
         assertEquals(143, containerState.exitCode)
@@ -803,10 +803,9 @@ class DashboardViewModelTest {
         assertEquals("/apps/vite-app", workingDir)
         assertEquals("npm run dev", command)
 
-        val commandKey = "command:cmd-1"
         val state = viewModel.state.value
-        assertNotNull(state.containerStates[commandKey])
-        assertIs<ContainerState.Running>(state.containerStates[commandKey])
+        assertNotNull(state.containerStates["cmd-1"])
+        assertIs<ContainerState.Running>(state.containerStates["cmd-1"])
     }
 
     @Test
@@ -834,10 +833,9 @@ class DashboardViewModelTest {
         assertEquals("cmd-1", fakeProcessManager.stopProcessCalls.first())
         assertFalse(fakeProcessManager.isRunning("cmd-1"))
 
-        val commandKey = "command:cmd-1"
         val state = viewModel.state.value
-        assertNotNull(state.containerStates[commandKey])
-        assertIs<ContainerState.Exited>(state.containerStates[commandKey])
+        assertNotNull(state.containerStates["cmd-1"])
+        assertIs<ContainerState.Exited>(state.containerStates["cmd-1"])
     }
 
     @Test
@@ -908,7 +906,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         val state = viewModel.state.value
-        val containerState = state.containerStates[commandKey]
+        val containerState = state.containerStates["cmd-1"]
         assertNotNull(containerState)
         assertIs<ContainerState.Running>(containerState)
     }
@@ -951,17 +949,17 @@ class DashboardViewModelTest {
         // Start Docker container
         viewModel.startService(sampleService2)
         runCurrent()
-        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["postgres-db"])
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["db-1"])
 
         // Restart Docker container
         viewModel.restartService(sampleService2)
         runCurrent()
-        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["postgres-db"])
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["db-1"])
 
         // Stop Docker container
         viewModel.stopService(sampleService2)
         runCurrent()
-        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates["postgres-db"])
+        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates["db-1"])
     }
 
     @Test
@@ -981,17 +979,17 @@ class DashboardViewModelTest {
         // Start Docker Compose service
         viewModel.startService(sampleService4)
         runCurrent()
-        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates[composeKey])
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["compose-1"])
 
         // Restart Docker Compose service
         viewModel.restartService(sampleService4)
         runCurrent()
-        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates[composeKey])
+        assertEquals(ContainerState.Running(status = "running"), viewModel.state.value.containerStates["compose-1"])
 
         // Stop Docker Compose service
         viewModel.stopService(sampleService4)
         runCurrent()
-        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates[composeKey])
+        assertEquals(ContainerState.Exited(exitCode = 0, status = "exited"), viewModel.state.value.containerStates["compose-1"])
     }
 
     @Test
@@ -1218,6 +1216,48 @@ class DashboardViewModelTest {
         assertTrue(viewModel.state.value.operatingServiceIds.isEmpty(), "operatingServiceIds should be cleared on error")
         assertNotNull(viewModel.state.value.errorMessage)
         assertTrue(viewModel.state.value.errorMessage?.contains("Failed to restart container") == true)
+    }
+
+    @Test
+    fun selectedServiceContainerState_resolvesDirectlyByServiceIdWithoutLogSourceMatching() {
+        val testConfig = DashboardConfig(
+            groups = listOf(
+                ServiceGroup(
+                    id = "g1",
+                    name = "Group 1",
+                    services = listOf(sampleService2)
+                )
+            )
+        )
+        val uiState = DashboardUiState(
+            config = testConfig,
+            selectedServiceId = "db-1",
+            containerStates = mapOf("db-1" to ContainerState.Running("running"))
+        )
+
+        assertEquals(ContainerState.Running("running"), uiState.selectedServiceContainerState)
+    }
+
+    @Test
+    fun refreshHealthAndDocker_keysContainerStatesByServiceIdAcrossAllLogSources() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val allSourcesConfig = sampleConfig.copy(
+            groups = listOf(
+                sampleGroup.copy(
+                    services = listOf(sampleService1, sampleService2, sampleService4, sampleService5)
+                )
+            )
+        )
+        fakeConfigRepository.saveConfig(allSourcesConfig)
+        runCurrent()
+
+        val state = viewModel.state.value
+        assertTrue(state.containerStates.containsKey("db-1"), "Docker container state should be keyed by serviceId 'db-1'")
+        assertTrue(state.containerStates.containsKey("compose-1"), "Docker Compose state should be keyed by serviceId 'compose-1'")
+        assertTrue(state.containerStates.containsKey("cmd-1"), "Command process state should be keyed by serviceId 'cmd-1'")
     }
 }
 

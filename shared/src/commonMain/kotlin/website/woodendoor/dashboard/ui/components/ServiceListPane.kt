@@ -40,11 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.model.ContainerState
-import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
-import website.woodendoor.dashboard.model.stateKey
 
 @Composable
 fun ServiceListPane(
@@ -216,17 +214,10 @@ fun ServiceListPane(
                         }
 
                         items(group.services, key = { it.id }) { service ->
-                            val containerState = when (val src = service.logSource) {
-                                is LogSource.Docker -> containerStates[src.containerName]
-                                is LogSource.DockerCompose -> containerStates[src.stateKey()]
-                                is LogSource.Command -> containerStates[src.stateKey(service.id)]
-                                else -> null
-                            }
-
                             ServiceCard(
                                 service = service,
                                 status = serviceStatuses[service.id],
-                                containerState = containerState,
+                                containerState = containerStates[service.id],
                                 isSelected = service.id == selectedServiceId,
                                 isOperating = service.id in operatingServiceIds,
                                 onSelect = { onSelectService(service.id) },
