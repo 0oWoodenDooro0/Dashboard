@@ -3,13 +3,8 @@ package website.woodendoor.dashboard.service
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import website.woodendoor.dashboard.model.PortHealth
-import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.ServiceStatus
 import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.net.NoRouteToHostException
@@ -45,28 +40,5 @@ class SocketPortHealthChecker(
             } catch (e: Exception) {
                 PortHealth.Closed(reason = e.message ?: e::class.simpleName ?: "Unknown error")
             }
-        }
-
-    override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> =
-        coroutineScope {
-            if (services.isEmpty()) return@coroutineScope emptyMap()
-
-            val now = System.currentTimeMillis()
-            services.map { service ->
-                async(ioDispatcher) {
-                    val portHealth = if (service.port != null) {
-                        checkPort(host = service.host, port = service.port, timeoutMs = defaultTimeoutMs)
-                    } else {
-                        PortHealth.None
-                    }
-                    val status = ServiceStatus(
-                        serviceId = service.id,
-                        portHealth = portHealth,
-                        isHealthy = (portHealth is PortHealth.Open || portHealth is PortHealth.None),
-                        lastCheckedTimestamp = now
-                    )
-                    service.id to status
-                }
-            }.awaitAll().toMap()
         }
 }

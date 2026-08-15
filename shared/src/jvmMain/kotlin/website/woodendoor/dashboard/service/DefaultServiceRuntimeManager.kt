@@ -60,19 +60,49 @@ class DefaultServiceRuntimeManager(
     }
 
     override suspend fun inspectService(service: ServiceItem): ServiceRuntimeStatus {
+        val isDocker = try {
+            dockerClient.isDockerAvailable()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+        return inspectServiceInternal(service, isDocker = isDocker)
+    }
+
+    override suspend fun inspectServices(services: List<ServiceItem>): Map<String, ServiceRuntimeStatus> =
+        coroutineScope {
+            if (services.isEmpty()) return@coroutineScope emptyMap()
+
+            val isDocker = try {
+                dockerClient.isDockerAvailable()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+
+            services.map { service ->
+                async(ioDispatcher) {
+                    service.id to inspectServiceInternal(service, isDocker = isDocker)
+                }
+            }.awaitAll().toMap()
+        }
+
+    private suspend fun inspectServiceInternal(service: ServiceItem, isDocker: Boolean): ServiceRuntimeStatus {
         val now = System.currentTimeMillis()
         val portHealth = checkPortHealth(service)
         val containerState = try {
             when (val src = service.logSource) {
                 is LogSource.Docker -> {
-                    if (isDockerAvailable()) {
+                    if (isDocker) {
                         dockerClient.getContainerState(src.containerName)
                     } else {
                         ContainerState.Unknown("Docker daemon unavailable")
                     }
                 }
                 is LogSource.DockerCompose -> {
-                    if (isDockerAvailable()) {
+                    if (isDocker) {
                         dockerComposeClient.getServiceState(
                             projectDir = src.projectDir,
                             serviceName = src.serviceName,
@@ -109,72 +139,6 @@ class DefaultServiceRuntimeManager(
             lastCheckedTimestamp = now
         )
     }
-
-    override suspend fun inspectServices(services: List<ServiceItem>): Map<String, ServiceRuntimeStatus> =
-        coroutineScope {
-            if (services.isEmpty()) return@coroutineScope emptyMap()
-
-            val isDocker = try {
-                dockerClient.isDockerAvailable()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                false
-            }
-
-            services.map { service ->
-                async(ioDispatcher) {
-                    val now = System.currentTimeMillis()
-                    val portHealth = checkPortHealth(service)
-                    val containerState = try {
-                        when (val src = service.logSource) {
-                            is LogSource.Docker -> {
-                                if (isDocker) {
-                                    dockerClient.getContainerState(src.containerName)
-                                } else {
-                                    ContainerState.Unknown("Docker daemon unavailable")
-                                }
-                            }
-                            is LogSource.DockerCompose -> {
-                                if (isDocker) {
-                                    dockerComposeClient.getServiceState(
-                                        projectDir = src.projectDir,
-                                        serviceName = src.serviceName,
-                                        composeFile = src.composeFile
-                                    )
-                                } else {
-                                    ContainerState.Unknown("Docker daemon unavailable")
-                                }
-                            }
-                            is LogSource.Command -> processManager.getProcessState(service.id)
-                            is LogSource.LocalFile, is LogSource.None -> ContainerState.Unknown("")
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        ContainerState.Unknown("Error retrieving state")
-                    }
-
-                    val isPortHealthy = portHealth is PortHealth.Open || portHealth is PortHealth.None
-                    val isHealthy = when (service.logSource) {
-                        is LogSource.Docker, is LogSource.DockerCompose, is LogSource.Command -> {
-                            containerState is ContainerState.Running && isPortHealthy
-                        }
-                        is LogSource.LocalFile, is LogSource.None -> {
-                            isPortHealthy && containerState !is ContainerState.Dead && containerState !is ContainerState.Exited
-                        }
-                    }
-
-                    service.id to ServiceRuntimeStatus(
-                        serviceId = service.id,
-                        portHealth = portHealth,
-                        containerState = containerState,
-                        isHealthy = isHealthy,
-                        lastCheckedTimestamp = now
-                    )
-                }
-            }.awaitAll().toMap()
-        }
 
     override fun streamLogs(service: ServiceItem, tail: Int): Flow<String> {
         return when (val src = service.logSource) {

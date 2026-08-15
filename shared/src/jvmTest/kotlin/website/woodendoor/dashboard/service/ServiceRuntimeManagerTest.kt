@@ -235,21 +235,6 @@ class ServiceRuntimeManagerTest {
             checkPortCalls.add(Triple(host, port, timeoutMs))
             return customHealthMap["$host:$port"] ?: customHealth
         }
-
-        override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> {
-            return services.associate { service ->
-                val health = if (service.port != null) {
-                    customHealthMap["${service.host}:${service.port}"] ?: customHealth
-                } else {
-                    PortHealth.None
-                }
-                service.id to ServiceStatus(
-                    serviceId = service.id,
-                    portHealth = health,
-                    isHealthy = (health is PortHealth.Open || health is PortHealth.None)
-                )
-            }
-        }
     }
 
     @BeforeTest
@@ -736,6 +721,59 @@ class ServiceRuntimeManagerTest {
         assertIs<ContainerState.Unknown>(status.containerState)
         assertEquals("Docker daemon unavailable", status.containerState.rawStatus)
         assertIs<PortHealth.Open>(status.portHealth)
+    }
+
+    @Test
+    fun inspectServices_emptyList_returnsEmptyMapImmediately() = runTest {
+        val results = runtimeManager.inspectServices(emptyList())
+        assertTrue(results.isEmpty())
+    }
+
+    @Test
+    fun inspectService_whenDockerUnavailable_returnsUnknownDaemonStatus() = runTest {
+        fakeDockerClient.isAvailable = false
+        val srv = ServiceItem(
+            id = "docker-srv-single",
+            name = "Docker App",
+            host = "127.0.0.1",
+            port = 9090,
+            logSource = LogSource.Docker("app-container")
+        )
+        fakePortHealthChecker.customHealthMap["127.0.0.1:9090"] = PortHealth.Open(latencyMs = 10)
+
+        val status = runtimeManager.inspectService(srv)
+
+        assertEquals("docker-srv-single", status.serviceId)
+        assertIs<ContainerState.Unknown>(status.containerState)
+        assertEquals("Docker daemon unavailable", status.containerState.rawStatus)
+        assertIs<PortHealth.Open>(status.portHealth)
+    }
+
+    @Test
+    fun inspectServices_and_inspectService_produceConsistentStatusForSameTarget() = runTest {
+        val srv = ServiceItem(
+            id = "compose-web",
+            name = "Compose Web",
+            host = "127.0.0.1",
+            port = 3000,
+            logSource = LogSource.DockerCompose(
+                projectDir = "/apps/web",
+                serviceName = "frontend",
+                composeFile = "compose.yaml"
+            )
+        )
+        fakeDockerClient.isAvailable = true
+        fakeDockerComposeClient.states["/apps/web:frontend:compose.yaml"] = ContainerState.Running("running")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:3000"] = PortHealth.Open(latencyMs = 7)
+
+        val singleStatus = runtimeManager.inspectService(srv)
+        val batchStatus = runtimeManager.inspectServices(listOf(srv))["compose-web"]
+
+        assertNotNull(batchStatus)
+        assertEquals(singleStatus.serviceId, batchStatus.serviceId)
+        assertEquals(singleStatus.portHealth, batchStatus.portHealth)
+        assertEquals(singleStatus.containerState, batchStatus.containerState)
+        assertEquals(singleStatus.isHealthy, batchStatus.isHealthy)
     }
 }
 
