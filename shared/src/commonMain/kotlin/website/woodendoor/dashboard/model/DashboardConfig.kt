@@ -35,12 +35,6 @@ sealed interface LogSource {
     data object None : LogSource
 }
 
-fun LogSource.DockerCompose.stateKey(): String =
-    "compose:$projectDir:$serviceName${if (!composeFile.isNullOrBlank()) ":$composeFile" else ""}"
-
-fun LogSource.Command.stateKey(serviceId: String): String =
-    "command:$serviceId"
-
 @Serializable
 data class ServiceItem(
     val id: String,

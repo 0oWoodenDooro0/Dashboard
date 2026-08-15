@@ -22,7 +22,6 @@ import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
-import website.woodendoor.dashboard.model.stateKey
 import website.woodendoor.dashboard.service.ConfigRepository
 import website.woodendoor.dashboard.service.PortHealthChecker
 import website.woodendoor.dashboard.service.ServiceRuntimeManager
@@ -151,20 +150,20 @@ class DashboardViewModel(
 
             val newContainerStates = mutableMapOf<String, ContainerState>()
             for (service in currentServices) {
-                val stateKey = when (val src = service.logSource) {
-                    is LogSource.Docker -> if (isDocker) src.containerName else null
-                    is LogSource.DockerCompose -> if (isDocker) src.stateKey() else null
-                    is LogSource.Command -> src.stateKey(service.id)
-                    else -> null
+                val isSupported = when (service.logSource) {
+                    is LogSource.Docker -> isDocker
+                    is LogSource.DockerCompose -> isDocker
+                    is LogSource.Command -> true
+                    else -> false
                 }
-                if (stateKey != null && !newContainerStates.containsKey(stateKey)) {
+                if (isSupported) {
                     try {
                         val state = serviceRuntimeManager.getServiceState(service)
-                        newContainerStates[stateKey] = state
+                        newContainerStates[service.id] = state
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
-                        newContainerStates[stateKey] = ContainerState.Unknown("Error retrieving state")
+                        newContainerStates[service.id] = ContainerState.Unknown("Error retrieving state")
                     }
                 }
             }
