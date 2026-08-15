@@ -1,5 +1,10 @@
 package website.woodendoor.dashboard.service
 
+import java.io.File
+import java.nio.file.Files
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -7,12 +12,20 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.DockerContainerInfo
 import website.woodendoor.dashboard.model.LogSource
@@ -21,10 +34,10 @@ import website.woodendoor.dashboard.model.ServiceItem
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceRuntimeManagerTest {
 
+    private lateinit var tempDir: File
     private lateinit var fakeDockerClient: FakeDockerClient
     private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var fakeProcessManager: FakeProcessManager
-    private lateinit var fakeLogStreamService: FakeLogStreamService
     private lateinit var runtimeManager: DefaultServiceRuntimeManager
 
     private val dockerService = ServiceItem(
@@ -75,13 +88,21 @@ class ServiceRuntimeManagerTest {
         var shouldThrowOnStart = false
         var shouldThrowOnStop = false
         var shouldThrowOnRestart = false
+        var lastRequestedContainer: String? = null
+        var lastRequestedTail: Int? = null
+        var customLogFlow: Flow<String> = flowOf("docker line 1", "docker line 2")
 
         override suspend fun isDockerAvailable(): Boolean = isAvailable
         override suspend fun listContainers(all: Boolean): List<DockerContainerInfo> = emptyList()
         override suspend fun getContainerState(nameOrId: String): ContainerState =
             states[nameOrId] ?: ContainerState.Running(status = "running")
 
-        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = flow {}
+        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> {
+            lastRequestedContainer = nameOrId
+            lastRequestedTail = tail
+            return customLogFlow
+        }
+
         override suspend fun startContainer(nameOrId: String) {
             if (shouldThrowOnStart) throw RuntimeException("Docker start failed for $nameOrId")
             startCalls.add(nameOrId)
@@ -110,13 +131,24 @@ class ServiceRuntimeManagerTest {
         var shouldThrowOnStart = false
         var shouldThrowOnStop = false
         var shouldThrowOnRestart = false
+        var lastRequestedProjectDir: String? = null
+        var lastRequestedServiceName: String? = null
+        var lastRequestedComposeFile: String? = null
+        var lastRequestedTail: Int? = null
+        var customLogFlow: Flow<String> = flowOf("compose line 1", "compose line 2")
 
         override suspend fun isComposeAvailable(): Boolean = isAvailable
         override suspend fun getServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState =
             states["$projectDir:$serviceName:$composeFile"] ?: ContainerState.Running(status = "running")
 
         override suspend fun listServices(projectDir: String, composeFile: String?): List<String> = emptyList()
-        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> = flow {}
+        override fun streamLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> {
+            lastRequestedProjectDir = projectDir
+            lastRequestedServiceName = serviceName
+            lastRequestedComposeFile = composeFile
+            lastRequestedTail = tail
+            return customLogFlow
+        }
 
         override suspend fun startService(projectDir: String, serviceName: String, composeFile: String?) {
             if (shouldThrowOnStart) throw RuntimeException("Compose start failed for $serviceName")
@@ -146,6 +178,10 @@ class ServiceRuntimeManagerTest {
         var shouldThrowOnStart = false
         var shouldThrowOnStop = false
         var shouldThrowOnRestart = false
+        var lastRequestedServiceId: String? = null
+        var lastRequestedSource: LogSource.Command? = null
+        var lastRequestedTail: Int? = null
+        var customLogFlow: Flow<String> = flowOf("process line 1", "process line 2")
 
         override suspend fun startProcess(serviceId: String, workingDir: String, command: String, environment: Map<String, String>) {
             if (shouldThrowOnStart) throw RuntimeException("Process start failed for $serviceId")
@@ -172,40 +208,36 @@ class ServiceRuntimeManagerTest {
         override fun getProcessState(serviceId: String): ContainerState =
             states[serviceId] ?: ContainerState.NotFound(reason = "Process not found")
 
-        override fun streamLogs(serviceId: String, tail: Int): Flow<String> = flow {}
-        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = flow {}
-    }
-
-    private class FakeLogStreamService : LogStreamService {
-        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
-        var lastRequestedSource: LogSource? = null
-        var lastRequestedServiceId: String? = null
-        var lastRequestedTail: Int = 100
-
-        fun getOrCreateFlow(key: String): MutableSharedFlow<String> =
-            flowMap.getOrPut(key) { MutableSharedFlow(extraBufferCapacity = 64) }
-
-        override fun streamLogs(source: LogSource, serviceId: String?, tail: Int): Flow<String> {
-            lastRequestedSource = source
+        override fun streamLogs(serviceId: String, tail: Int): Flow<String> {
             lastRequestedServiceId = serviceId
             lastRequestedTail = tail
-            val key = serviceId ?: source.toString()
-            return getOrCreateFlow(key)
+            return customLogFlow
+        }
+
+        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> {
+            lastRequestedSource = source
+            lastRequestedTail = tail
+            return customLogFlow
         }
     }
 
     @BeforeTest
     fun setUp() {
+        tempDir = Files.createTempDirectory("runtime-manager-test").toFile()
         fakeDockerClient = FakeDockerClient()
         fakeDockerComposeClient = FakeDockerComposeClient()
         fakeProcessManager = FakeProcessManager()
-        fakeLogStreamService = FakeLogStreamService()
         runtimeManager = DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
             processManager = fakeProcessManager,
-            logStreamService = fakeLogStreamService
+            filePollDelayMs = 20L
         )
+    }
+
+    @AfterTest
+    fun tearDown() {
+        tempDir.deleteRecursively()
     }
 
     @Test
@@ -323,25 +355,181 @@ class ServiceRuntimeManagerTest {
         }
     }
 
-    // --- Log Streaming Tests ---
+    // --- Log Streaming Direct Target Tests ---
 
     @Test
-    fun streamLogs_delegatesToLogStreamServiceWithCorrectServiceIdAndSource() = runTest {
-        val flow = runtimeManager.streamLogs(dockerService, tail = 50)
-        assertEquals(dockerService.logSource, fakeLogStreamService.lastRequestedSource)
-        assertEquals("docker-srv", fakeLogStreamService.lastRequestedServiceId)
-        assertEquals(50, fakeLogStreamService.lastRequestedTail)
+    fun streamLogs_dockerTarget_delegatesToDockerClientWithTail() = runTest {
+        fakeDockerClient.customLogFlow = listOf("docker: init", "docker: started").asFlow()
+        val result = runtimeManager.streamLogs(dockerService, tail = 50).toList()
 
-        // Verify flow connection
-        val testFlow = fakeLogStreamService.getOrCreateFlow("docker-srv")
-        testFlow.tryEmit("log line 1")
+        assertEquals("backend-container", fakeDockerClient.lastRequestedContainer)
+        assertEquals(50, fakeDockerClient.lastRequestedTail)
+        assertEquals(listOf("docker: init", "docker: started"), result)
     }
 
     @Test
-    fun streamLogs_forCommandService_passesServiceId() = runTest {
-        runtimeManager.streamLogs(commandService, tail = 100)
-        assertEquals(commandService.logSource, fakeLogStreamService.lastRequestedSource)
-        assertEquals("cmd-srv", fakeLogStreamService.lastRequestedServiceId)
-        assertEquals(100, fakeLogStreamService.lastRequestedTail)
+    fun streamLogs_dockerComposeTarget_delegatesToDockerComposeClientWithTail() = runTest {
+        fakeDockerComposeClient.customLogFlow = listOf("compose: web started").asFlow()
+        val result = runtimeManager.streamLogs(composeService, tail = 75).toList()
+
+        assertEquals("/apps/my-app", fakeDockerComposeClient.lastRequestedProjectDir)
+        assertEquals("web", fakeDockerComposeClient.lastRequestedServiceName)
+        assertEquals("docker-compose.yml", fakeDockerComposeClient.lastRequestedComposeFile)
+        assertEquals(75, fakeDockerComposeClient.lastRequestedTail)
+        assertEquals(listOf("compose: web started"), result)
+    }
+
+    @Test
+    fun streamLogs_commandTarget_delegatesToProcessManagerWithServiceIdAndTail() = runTest {
+        fakeProcessManager.customLogFlow = listOf("cmd: vite server ready").asFlow()
+        val result = runtimeManager.streamLogs(commandService, tail = 100).toList()
+
+        assertEquals("cmd-srv", fakeProcessManager.lastRequestedServiceId)
+        assertEquals(100, fakeProcessManager.lastRequestedTail)
+        assertEquals(listOf("cmd: vite server ready"), result)
+    }
+
+    @Test
+    fun streamLogs_noneTarget_returnsEmptyFlow() = runTest {
+        val result = runtimeManager.streamLogs(noneService, tail = 100).toList()
+        assertTrue(result.isEmpty())
+    }
+
+    // --- Local File Log Streaming & Tail Tests ---
+
+    @Test
+    fun streamLogs_localFileTarget_streamsInitialTailLines() = runTest {
+        withContext(Dispatchers.Default) {
+            val logFile = File(tempDir, "app.log")
+            val allLines = (1..10).map { "log line $it" }
+            logFile.writeText(allLines.joinToString("\n") + "\n")
+
+            val service = ServiceItem(
+                id = "file-app",
+                name = "File App",
+                logSource = LogSource.LocalFile(logFile.absolutePath)
+            )
+
+            val result = withTimeout(3000) {
+                runtimeManager.streamLogs(service, tail = 3).take(3).toList()
+            }
+
+            assertEquals(listOf("log line 8", "log line 9", "log line 10"), result)
+        }
+    }
+
+    @Test
+    fun streamLogs_localFileTarget_streamsDynamicAppends() = runTest {
+        withContext(Dispatchers.Default) {
+            val logFile = File(tempDir, "dynamic.log")
+            logFile.writeText("initial\n")
+
+            val service = ServiceItem(
+                id = "dyn-file",
+                name = "Dynamic File",
+                logSource = LogSource.LocalFile(logFile.absolutePath)
+            )
+
+            val flow = runtimeManager.streamLogs(service, tail = 1)
+            val collector = async {
+                withTimeout(4000) {
+                    flow.take(3).toList()
+                }
+            }
+
+            delay(50)
+            logFile.appendText("appended-1\n")
+            delay(50)
+            logFile.appendText("appended-2\n")
+
+            val result = collector.await()
+            assertEquals(listOf("initial", "appended-1", "appended-2"), result)
+        }
+    }
+
+    @Test
+    fun streamLogs_localFileTarget_detectsFileTruncationAndRotation() = runTest {
+        withContext(Dispatchers.Default) {
+            val logFile = File(tempDir, "rotated.log")
+            logFile.writeText("old line 1\nold line 2\nold line 3\n")
+
+            val service = ServiceItem(
+                id = "rot-file",
+                name = "Rotated File",
+                logSource = LogSource.LocalFile(logFile.absolutePath)
+            )
+
+            val flow = runtimeManager.streamLogs(service, tail = 1)
+            val collector = async {
+                withTimeout(4000) {
+                    flow.take(3).toList()
+                }
+            }
+
+            delay(50)
+            logFile.writeText("rotated line 1\nrotated line 2\n")
+
+            val result = collector.await()
+            assertEquals(listOf("old line 3", "rotated line 1", "rotated line 2"), result)
+        }
+    }
+
+    @Test
+    fun streamLogs_localFileTarget_handlesCrlfLineEndings() = runTest {
+        withContext(Dispatchers.Default) {
+            val logFile = File(tempDir, "crlf.log")
+            logFile.writeBytes("win line 1\r\nwin line 2\r\n".toByteArray(Charsets.UTF_8))
+
+            val service = ServiceItem(
+                id = "crlf-file",
+                name = "CRLF File",
+                logSource = LogSource.LocalFile(logFile.absolutePath)
+            )
+
+            val result = withTimeout(3000) {
+                runtimeManager.streamLogs(service, tail = 2).take(2).toList()
+            }
+
+            assertEquals(listOf("win line 1", "win line 2"), result)
+        }
+    }
+
+    @Test
+    fun streamLogs_localFileTarget_executesOnInjectedIoDispatcher() = runTest {
+        val threadCounter = AtomicInteger(0)
+        val executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "custom-runtime-io-thread-${threadCounter.incrementAndGet()}")
+        }
+        val customIoDispatcher = executor.asCoroutineDispatcher()
+
+        val managerWithCustomDispatcher = DefaultServiceRuntimeManager(
+            dockerClient = fakeDockerClient,
+            dockerComposeClient = fakeDockerComposeClient,
+            processManager = fakeProcessManager,
+            ioDispatcher = customIoDispatcher,
+            filePollDelayMs = 20L
+        )
+
+        val logFile = File(tempDir, "dispatcher.log")
+        logFile.writeText("dispatcher line 1\ndispatcher line 2\n")
+
+        val service = ServiceItem(
+            id = "disp-file",
+            name = "Dispatcher File",
+            logSource = LogSource.LocalFile(logFile.absolutePath)
+        )
+
+        try {
+            val result = withContext(Dispatchers.Default) {
+                withTimeout(3000) {
+                    managerWithCustomDispatcher.streamLogs(service, tail = 2).take(2).toList()
+                }
+            }
+            assertEquals(listOf("dispatcher line 1", "dispatcher line 2"), result)
+        } finally {
+            customIoDispatcher.close()
+            executor.shutdown()
+        }
     }
 }
+
