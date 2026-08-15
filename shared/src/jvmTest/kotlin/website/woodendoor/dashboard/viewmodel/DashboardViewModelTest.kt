@@ -30,9 +30,11 @@ import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceStatus
 import website.woodendoor.dashboard.service.ConfigRepository
+import website.woodendoor.dashboard.service.DefaultServiceRuntimeManager
 import website.woodendoor.dashboard.service.DockerClient
 import website.woodendoor.dashboard.service.LogStreamService
 import website.woodendoor.dashboard.service.PortHealthChecker
+import website.woodendoor.dashboard.service.ServiceRuntimeManager
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModelTest {
@@ -322,15 +324,18 @@ class DashboardViewModelTest {
         testScope: CoroutineScope,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
         maxLogBufferSize: Int = 1000,
-        processManager: website.woodendoor.dashboard.service.ProcessManager? = fakeProcessManager
+        serviceRuntimeManager: ServiceRuntimeManager? = null
     ): DashboardViewModel {
+        val runtime = serviceRuntimeManager ?: DefaultServiceRuntimeManager(
+            dockerClient = fakeDockerClient,
+            dockerComposeClient = fakeDockerComposeClient,
+            processManager = fakeProcessManager,
+            logStreamService = fakeLogStreamService
+        )
         val vm = DashboardViewModel(
             configRepository = fakeConfigRepository,
             healthChecker = fakeHealthChecker,
-            logStreamService = fakeLogStreamService,
-            dockerClient = fakeDockerClient,
-            dockerComposeClient = fakeDockerComposeClient,
-            processManager = processManager,
+            serviceRuntimeManager = runtime,
             coroutineScope = testScope,
             defaultDispatcher = dispatcher,
             maxLogBufferSize = maxLogBufferSize
