@@ -130,20 +130,35 @@ class DashboardViewModelTest {
     }
 
     private class FakePortHealthChecker : PortHealthChecker {
+        var checkPortCallCount = 0
         var checkServicesCallCount = 0
         var customHealthMap = mutableMapOf<String, PortHealth>()
 
         override suspend fun checkPort(host: String, port: Int, timeoutMs: Long): PortHealth {
-            return PortHealth.Open(latencyMs = 15)
+            checkPortCallCount++
+            checkServicesCallCount++
+            return customHealthMap["$host:$port"]
+                ?: customHealthMap[port.toString()]
+                ?: customHealthMap["web-1"].takeIf { port == 3000 }
+                ?: customHealthMap["db-1"].takeIf { port == 5432 }
+                ?: customHealthMap["cache-1"].takeIf { port == 6379 }
+                ?: customHealthMap["compose-1"].takeIf { port == 8080 }
+                ?: customHealthMap["cmd-1"].takeIf { port == 5173 }
+                ?: PortHealth.Open(latencyMs = 15)
         }
 
         override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> {
             checkServicesCallCount++
             return services.associate { service ->
-                val health = customHealthMap[service.id] ?: PortHealth.Open(latencyMs = 15)
+                val health = if (service.port != null) {
+                    checkPort(service.host, service.port, 1000)
+                } else {
+                    PortHealth.None
+                }
                 service.id to ServiceStatus(
                     serviceId = service.id,
-                    portHealth = health
+                    portHealth = health,
+                    isHealthy = (health is PortHealth.Open || health is PortHealth.None)
                 )
             }
         }
@@ -331,11 +346,12 @@ class DashboardViewModelTest {
         val runtime = serviceRuntimeManager ?: DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
-            processManager = fakeProcessManager
+            processManager = fakeProcessManager,
+            portHealthChecker = fakeHealthChecker,
+            ioDispatcher = dispatcher
         )
         val vm = DashboardViewModel(
             configRepository = fakeConfigRepository,
-            healthChecker = fakeHealthChecker,
             serviceRuntimeManager = runtime,
             coroutineScope = testScope,
             defaultDispatcher = dispatcher,
@@ -391,7 +407,8 @@ class DashboardViewModelTest {
         val viewModel = createViewModel(this, dispatcher)
         runCurrent()
 
-        assertEquals(1, fakeHealthChecker.checkServicesCallCount)
+        val initialCallCount = fakeHealthChecker.checkPortCallCount
+        assertTrue(initialCallCount > 0)
 
         // Change health of web-1 to closed and docker container state to exited
         fakeHealthChecker.customHealthMap["web-1"] = PortHealth.Closed("Connection refused")
@@ -402,7 +419,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         val state = viewModel.state.value
-        assertTrue(fakeHealthChecker.checkServicesCallCount >= 2)
+        assertTrue(fakeHealthChecker.checkPortCallCount > initialCallCount)
         assertIs<PortHealth.Closed>(state.serviceStatuses["web-1"]?.portHealth)
         assertEquals("Connection refused", (state.serviceStatuses["web-1"]?.portHealth as PortHealth.Closed).reason)
         assertIs<ContainerState.Exited>(state.containerStates["db-1"])
@@ -675,13 +692,13 @@ class DashboardViewModelTest {
         val viewModel = createViewModel(this, dispatcher)
         runCurrent()
 
-        val initialCount = fakeHealthChecker.checkServicesCallCount
+        val initialCount = fakeHealthChecker.checkPortCallCount
 
         fakeHealthChecker.customHealthMap["web-1"] = PortHealth.Unreachable("Host unreachable")
         viewModel.triggerRefresh()
         runCurrent()
 
-        assertTrue(fakeHealthChecker.checkServicesCallCount > initialCount)
+        assertTrue(fakeHealthChecker.checkPortCallCount > initialCount)
         assertIs<PortHealth.Unreachable>(viewModel.state.value.serviceStatuses["web-1"]?.portHealth)
     }
 
@@ -1232,7 +1249,7 @@ class DashboardViewModelTest {
         val uiState = DashboardUiState(
             config = testConfig,
             selectedServiceId = "db-1",
-            containerStates = mapOf("db-1" to ContainerState.Running("running"))
+            serviceStatuses = mapOf("db-1" to ServiceStatus(serviceId = "db-1", containerState = ContainerState.Running("running")))
         )
 
         assertEquals(ContainerState.Running("running"), uiState.selectedServiceContainerState)

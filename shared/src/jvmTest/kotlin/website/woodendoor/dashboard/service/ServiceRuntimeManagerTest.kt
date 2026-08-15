@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +30,10 @@ import kotlinx.coroutines.withTimeout
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.DockerContainerInfo
 import website.woodendoor.dashboard.model.LogSource
+import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
+import website.woodendoor.dashboard.model.ServiceStatus
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ServiceRuntimeManagerTest {
@@ -38,6 +42,7 @@ class ServiceRuntimeManagerTest {
     private lateinit var fakeDockerClient: FakeDockerClient
     private lateinit var fakeDockerComposeClient: FakeDockerComposeClient
     private lateinit var fakeProcessManager: FakeProcessManager
+    private lateinit var fakePortHealthChecker: FakePortHealthChecker
     private lateinit var runtimeManager: DefaultServiceRuntimeManager
 
     private val dockerService = ServiceItem(
@@ -221,16 +226,44 @@ class ServiceRuntimeManagerTest {
         }
     }
 
+    private class FakePortHealthChecker : PortHealthChecker {
+        val checkPortCalls = mutableListOf<Triple<String, Int, Long>>()
+        var customHealth: PortHealth = PortHealth.Open(latencyMs = 10)
+        val customHealthMap = mutableMapOf<String, PortHealth>()
+
+        override suspend fun checkPort(host: String, port: Int, timeoutMs: Long): PortHealth {
+            checkPortCalls.add(Triple(host, port, timeoutMs))
+            return customHealthMap["$host:$port"] ?: customHealth
+        }
+
+        override suspend fun checkServices(services: List<ServiceItem>): Map<String, ServiceStatus> {
+            return services.associate { service ->
+                val health = if (service.port != null) {
+                    customHealthMap["${service.host}:${service.port}"] ?: customHealth
+                } else {
+                    PortHealth.None
+                }
+                service.id to ServiceStatus(
+                    serviceId = service.id,
+                    portHealth = health,
+                    isHealthy = (health is PortHealth.Open || health is PortHealth.None)
+                )
+            }
+        }
+    }
+
     @BeforeTest
     fun setUp() {
         tempDir = Files.createTempDirectory("runtime-manager-test").toFile()
         fakeDockerClient = FakeDockerClient()
         fakeDockerComposeClient = FakeDockerComposeClient()
         fakeProcessManager = FakeProcessManager()
+        fakePortHealthChecker = FakePortHealthChecker()
         runtimeManager = DefaultServiceRuntimeManager(
             dockerClient = fakeDockerClient,
             dockerComposeClient = fakeDockerComposeClient,
             processManager = fakeProcessManager,
+            portHealthChecker = fakePortHealthChecker,
             filePollDelayMs = 20L
         )
     }
@@ -530,6 +563,179 @@ class ServiceRuntimeManagerTest {
             customIoDispatcher.close()
             executor.shutdown()
         }
+    }
+
+    // --- Unified Inspection & Health Tests ---
+
+    @Test
+    fun checkPortHealth_whenServiceHasPort_delegatesToPortHealthChecker() = runTest {
+        val srvWithPort = ServiceItem(id = "srv-port", name = "Srv", host = "127.0.0.1", port = 8080)
+        fakePortHealthChecker.customHealth = PortHealth.Open(latencyMs = 25)
+
+        val health = runtimeManager.checkPortHealth(srvWithPort, timeoutMs = 1500)
+        assertIs<PortHealth.Open>(health)
+        assertEquals(25, health.latencyMs)
+        assertEquals(listOf(Triple("127.0.0.1", 8080, 1500L)), fakePortHealthChecker.checkPortCalls)
+    }
+
+    @Test
+    fun checkPortHealth_whenServiceHasNoPort_returnsNone() = runTest {
+        val srvNoPort = ServiceItem(id = "srv-no-port", name = "Srv", host = "127.0.0.1", port = null)
+        val health = runtimeManager.checkPortHealth(srvNoPort)
+
+        assertIs<PortHealth.None>(health)
+        assertTrue(fakePortHealthChecker.checkPortCalls.isEmpty())
+    }
+
+    @Test
+    fun inspectService_forDockerService_combinesPortAndContainerState() = runTest {
+        val srv = ServiceItem(
+            id = "docker-web",
+            name = "Docker Web",
+            host = "127.0.0.1",
+            port = 3000,
+            logSource = LogSource.Docker("web-app")
+        )
+        fakeDockerClient.isAvailable = true
+        fakeDockerClient.states["web-app"] = ContainerState.Running(status = "Up 10 minutes")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:3000"] = PortHealth.Open(latencyMs = 12)
+
+        val status = runtimeManager.inspectService(srv)
+
+        assertEquals("docker-web", status.serviceId)
+        assertIs<PortHealth.Open>(status.portHealth)
+        assertEquals(12, status.portHealth.latencyMs)
+        assertIs<ContainerState.Running>(status.containerState)
+        assertEquals("Up 10 minutes", status.containerState.status)
+        assertTrue(status.isHealthy, "Service with Running container and Open port should be healthy")
+        assertTrue(status.lastCheckedTimestamp > 0L)
+    }
+
+    @Test
+    fun inspectService_whenDockerExited_evaluatesIsHealthyFalse() = runTest {
+        val srv = ServiceItem(
+            id = "docker-api",
+            name = "Docker API",
+            host = "127.0.0.1",
+            port = 8000,
+            logSource = LogSource.Docker("api-server")
+        )
+        fakeDockerClient.isAvailable = true
+        fakeDockerClient.states["api-server"] = ContainerState.Exited(exitCode = 1, status = "Exited (1)")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:8000"] = PortHealth.Closed("Connection refused")
+
+        val status = runtimeManager.inspectService(srv)
+
+        assertEquals("docker-api", status.serviceId)
+        assertIs<ContainerState.Exited>(status.containerState)
+        assertIs<PortHealth.Closed>(status.portHealth)
+        assertFalse(status.isHealthy, "Service with Exited container must NOT be healthy")
+    }
+
+    @Test
+    fun inspectService_whenPortClosed_evaluatesIsHealthyFalse() = runTest {
+        val srv = ServiceItem(
+            id = "docker-backend",
+            name = "Docker Backend",
+            host = "127.0.0.1",
+            port = 5000,
+            logSource = LogSource.Docker("backend-srv")
+        )
+        fakeDockerClient.isAvailable = true
+        fakeDockerClient.states["backend-srv"] = ContainerState.Running("running")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:5000"] = PortHealth.Closed("Connection refused")
+
+        val status = runtimeManager.inspectService(srv)
+
+        assertIs<ContainerState.Running>(status.containerState)
+        assertIs<PortHealth.Closed>(status.portHealth)
+        assertFalse(status.isHealthy, "Service with Closed port must NOT be healthy even if container is running")
+    }
+
+    @Test
+    fun inspectService_forCommandService_combinesProcessStateAndPort() = runTest {
+        val srv = ServiceItem(
+            id = "vite-dev",
+            name = "Vite Dev",
+            host = "127.0.0.1",
+            port = 5173,
+            logSource = LogSource.Command(workingDir = "/app", startCommand = "npm run dev")
+        )
+        fakeProcessManager.runningIds.add("vite-dev")
+        fakeProcessManager.states["vite-dev"] = ContainerState.Running("running")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:5173"] = PortHealth.Open(latencyMs = 8)
+
+        val status = runtimeManager.inspectService(srv)
+
+        assertEquals("vite-dev", status.serviceId)
+        assertIs<ContainerState.Running>(status.containerState)
+        assertIs<PortHealth.Open>(status.portHealth)
+        assertTrue(status.isHealthy)
+    }
+
+    @Test
+    fun inspectServices_executesConcurrentlyAndReturnsAllStatuses() = runTest {
+        val srv1 = ServiceItem(
+            id = "s1",
+            name = "Service 1",
+            host = "127.0.0.1",
+            port = 3000,
+            logSource = LogSource.Docker("c1")
+        )
+        val srv2 = ServiceItem(
+            id = "s2",
+            name = "Service 2",
+            host = "127.0.0.1",
+            port = 4000,
+            logSource = LogSource.Command(workingDir = "/app2", startCommand = "npm start")
+        )
+        val srv3 = ServiceItem(
+            id = "s3",
+            name = "Service 3",
+            host = "127.0.0.1",
+            port = 5000,
+            logSource = LogSource.None
+        )
+
+        fakeDockerClient.states["c1"] = ContainerState.Running("running")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:3000"] = PortHealth.Open(latencyMs = 5)
+
+        fakeProcessManager.states["s2"] = ContainerState.Exited(exitCode = 137, status = "killed")
+        fakePortHealthChecker.customHealthMap["127.0.0.1:4000"] = PortHealth.Closed("refused")
+
+        fakePortHealthChecker.customHealthMap["127.0.0.1:5000"] = PortHealth.Open(latencyMs = 15)
+
+        val results = runtimeManager.inspectServices(listOf(srv1, srv2, srv3))
+
+        assertEquals(3, results.size)
+        assertTrue(results.containsKey("s1"))
+        assertTrue(results.containsKey("s2"))
+        assertTrue(results.containsKey("s3"))
+
+        assertTrue(results["s1"]!!.isHealthy)
+        assertFalse(results["s2"]!!.isHealthy)
+        assertTrue(results["s3"]!!.isHealthy)
+    }
+
+    @Test
+    fun inspectServices_whenDockerUnavailable_handlesGracefully() = runTest {
+        fakeDockerClient.isAvailable = false
+        val srv = ServiceItem(
+            id = "docker-srv",
+            name = "Docker App",
+            host = "127.0.0.1",
+            port = 9090,
+            logSource = LogSource.Docker("app-container")
+        )
+        fakePortHealthChecker.customHealthMap["127.0.0.1:9090"] = PortHealth.Open(latencyMs = 10)
+
+        val results = runtimeManager.inspectServices(listOf(srv))
+
+        val status = results["docker-srv"]
+        assertNotNull(status)
+        assertIs<ContainerState.Unknown>(status.containerState)
+        assertEquals("Docker daemon unavailable", status.containerState.rawStatus)
+        assertIs<PortHealth.Open>(status.portHealth)
     }
 }
 

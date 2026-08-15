@@ -23,9 +23,12 @@ sealed interface PortHealth {
 }
 
 @Serializable
-data class ServiceStatus(
+data class ServiceRuntimeStatus(
     val serviceId: String,
-    val portHealth: PortHealth,
+    val portHealth: PortHealth = PortHealth.None,
+    val containerState: ContainerState = ContainerState.Unknown(""),
     val isHealthy: Boolean = (portHealth is PortHealth.Open || portHealth is PortHealth.None),
     val lastCheckedTimestamp: Long = 0L
 )
+
+typealias ServiceStatus = ServiceRuntimeStatus
