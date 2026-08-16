@@ -52,7 +52,32 @@ import website.woodendoor.dashboard.ui.theme.ConsoleHighlightBg
 import website.woodendoor.dashboard.ui.theme.ConsoleHighlightText
 import website.woodendoor.dashboard.ui.theme.MonospaceFontFamily
 import website.woodendoor.dashboard.ui.theme.StatusHealthy
-import website.woodendoor.dashboard.ui.util.LogHighlightHelper
+import website.woodendoor.dashboard.viewmodel.LogConsoleSession
+
+@Composable
+fun LogConsolePane(
+    selectedService: ServiceItem?,
+    logSession: LogConsoleSession,
+    onSearchQueryChange: (String) -> Unit,
+    isAutoScrollEnabled: Boolean,
+    onToggleAutoScroll: (Boolean) -> Unit,
+    onClearLogs: () -> Unit,
+    onCopyLogs: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LogConsolePane(
+        selectedService = selectedService,
+        logs = logSession.logs,
+        filteredLogs = logSession.filteredLogs,
+        searchQuery = logSession.searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
+        isAutoScrollEnabled = isAutoScrollEnabled,
+        onToggleAutoScroll = onToggleAutoScroll,
+        onClearLogs = onClearLogs,
+        onCopyLogs = onCopyLogs,
+        modifier = modifier
+    )
+}
 
 @Composable
 fun LogConsolePane(
@@ -406,7 +431,7 @@ fun LogLineItem(
 }
 
 fun highlightLogLine(line: String, query: String): AnnotatedString {
-    val ranges = LogHighlightHelper.findHighlightRanges(line, query)
+    val ranges = LogConsoleSession.findHighlightRanges(line, query)
     if (ranges.isEmpty()) {
         return AnnotatedString(line)
     }

@@ -154,9 +154,7 @@ fun App(
                 // Right Column: Log Console Pane (Remaining space)
                 LogConsolePane(
                     selectedService = state.selectedService,
-                    logs = state.logs,
-                    filteredLogs = state.filteredLogs,
-                    searchQuery = state.logSearchQuery,
+                    logSession = state.logSession,
                     onSearchQueryChange = { query ->
                         viewModel.setLogSearchQuery(query)
                     },
