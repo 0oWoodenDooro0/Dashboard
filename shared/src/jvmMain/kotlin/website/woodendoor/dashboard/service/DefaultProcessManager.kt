@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import website.woodendoor.dashboard.model.ContainerState
-import website.woodendoor.dashboard.model.LogSource
 
 class DefaultProcessManager(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -93,7 +92,6 @@ class DefaultProcessManager(
     private val historyStates = ConcurrentHashMap<String, ContainerState>()
     private val historyLogBuffers = ConcurrentHashMap<String, LogBuffer>()
     private val historyLogFlows = ConcurrentHashMap<String, MutableSharedFlow<LogEntry>>()
-    private val historySources = ConcurrentHashMap<String, LogSource.Command>()
 
     private fun isWindows(): Boolean =
         System.getProperty("os.name").lowercase().contains("win")
@@ -115,12 +113,6 @@ class DefaultProcessManager(
             if (activeProcesses.containsKey(serviceId) && isRunning(serviceId)) {
                 stopProcess(serviceId, workingDir = workingDir)
             }
-
-            historySources[serviceId] = LogSource.Command(
-                workingDir = workingDir,
-                startCommand = command,
-                environment = environment
-            )
 
             val dir = File(workingDir)
             if (!dir.exists() || !dir.isDirectory) {
@@ -318,20 +310,6 @@ class DefaultProcessManager(
             if (entry.seq > lastEmittedSeq) {
                 lastEmittedSeq = entry.seq
                 emit(entry.text)
-            }
-        }
-    }.flowOn(ioDispatcher)
-
-    override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = flow {
-        val targetServiceId = activeProcesses.values.find {
-            it.workingDir == source.workingDir && it.command == source.startCommand
-        }?.serviceId ?: historySources.entries.find { (_, src) ->
-            src.workingDir == source.workingDir && src.startCommand == source.startCommand
-        }?.key ?: historyLogBuffers.keys.firstOrNull()
-
-        if (targetServiceId != null) {
-            streamLogs(targetServiceId, tail).collect { line ->
-                emit(line)
             }
         }
     }.flowOn(ioDispatcher)

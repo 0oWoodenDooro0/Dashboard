@@ -1,5 +1,6 @@
 package website.woodendoor.dashboard.ui.util
 
+import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
 
@@ -217,7 +218,7 @@ object ServiceFormValidator {
         val effectiveId = if (state.id.isNotBlank()) {
             state.id.trim()
         } else {
-            generateSlug(trimmedName, existingIds)
+            DashboardConfig.generateSlug(trimmedName, existingIds)
         }
 
         val effectiveHost = if (state.host.isNotBlank()) state.host.trim() else "127.0.0.1"
@@ -248,22 +249,6 @@ object ServiceFormValidator {
         )
     }
 
-    fun generateSlug(input: String, existingIds: Set<String> = emptySet()): String {
-        val baseSlug = input.lowercase()
-            .replace(Regex("""[^a-z0-9]+"""), "-")
-            .trim('-')
-            .ifEmpty { "service-${System.currentTimeMillis()}" }
-
-        if (baseSlug !in existingIds) {
-            return baseSlug
-        }
-
-        var suffix = 2
-        var candidate = "$baseSlug-$suffix"
-        while (candidate in existingIds) {
-            suffix++
-            candidate = "$baseSlug-$suffix"
-        }
-        return candidate
-    }
+    fun generateSlug(input: String, existingIds: Set<String> = emptySet()): String =
+        DashboardConfig.generateSlug(input, existingIds)
 }

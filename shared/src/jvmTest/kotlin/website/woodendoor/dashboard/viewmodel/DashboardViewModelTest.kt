@@ -238,8 +238,6 @@ class DashboardViewModelTest {
             lastRequestedStreamServiceId = serviceId
             return getOrCreateFlow(serviceId)
         }
-
-        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> = flow {}
     }
 
     private fun getOrCreateLogFlow(service: ServiceItem): MutableSharedFlow<String> {

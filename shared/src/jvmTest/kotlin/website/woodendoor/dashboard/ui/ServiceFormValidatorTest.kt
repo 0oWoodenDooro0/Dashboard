@@ -495,4 +495,31 @@ class ServiceFormValidatorTest {
         val uniqueSlug = ServiceFormValidator.generateSlug("Test", existingIds)
         assertEquals("test-4", uniqueSlug)
     }
+
+    @Test
+    fun `validate auto-generates slug when id is blank`() {
+        val formState = ServiceFormState(
+            id = "",
+            name = "Order Service API",
+            logSourceType = LogSourceType.DOCKER,
+            dockerContainerName = "order-api"
+        )
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals("order-service-api", result.serviceItem.id)
+    }
+
+    @Test
+    fun `validate preserves provided id when id is not blank`() {
+        val formState = ServiceFormState(
+            id = "custom-order-svc",
+            name = "Order Service API",
+            logSourceType = LogSourceType.DOCKER,
+            dockerContainerName = "order-api"
+        )
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals("custom-order-svc", result.serviceItem.id)
+    }
 }
+

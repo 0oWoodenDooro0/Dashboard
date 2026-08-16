@@ -19,7 +19,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import website.woodendoor.dashboard.model.ContainerState
-import website.woodendoor.dashboard.model.LogSource
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProcessManagerTest {
@@ -204,32 +203,6 @@ class ProcessManagerTest {
         }
     }
 
-    @Test
-    fun testStreamLogsByLogSourceCommand() = runTest {
-        withContext(Dispatchers.Default) {
-            val isWindows = System.getProperty("os.name").lowercase().contains("win")
-            val cmd = if (isWindows) "echo hello from source" else "echo 'hello from source'"
-
-            val source = LogSource.Command(
-                workingDir = tempDir.absolutePath,
-                startCommand = cmd
-            )
-
-            val serviceId = "source-cmd-service"
-            processManager.startProcess(
-                serviceId = serviceId,
-                workingDir = source.workingDir,
-                command = source.startCommand
-            )
-
-            val flow = processManager.streamLogs(source = source, tail = 5)
-            val logs = withTimeout(5000) {
-                flow.take(1).toList()
-            }
-
-            assertTrue(logs.any { it.contains("hello from source") })
-        }
-    }
 
     @Test
     fun testStreamLogsContinuesAfterLogBufferOverflow() = runTest {
