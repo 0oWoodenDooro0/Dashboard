@@ -12,11 +12,33 @@ data class DashboardUiState(
     val isDockerAvailable: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val logs: List<String> = emptyList(),
-    val logSearchQuery: String = "",
+    val logSession: LogConsoleSession = LogConsoleSession(),
     val isAutoScrollEnabled: Boolean = true,
     val operatingServiceIds: Set<String> = emptySet()
 ) {
+    constructor(
+        config: DashboardConfig = DashboardConfig(),
+        selectedServiceId: String? = null,
+        serviceStatuses: Map<String, ServiceRuntimeStatus> = emptyMap(),
+        isDockerAvailable: Boolean = false,
+        isLoading: Boolean = false,
+        errorMessage: String? = null,
+        logs: List<String> = emptyList(),
+        logSearchQuery: String = "",
+        isAutoScrollEnabled: Boolean = true,
+        operatingServiceIds: Set<String> = emptySet()
+    ) : this(
+        config = config,
+        selectedServiceId = selectedServiceId,
+        serviceStatuses = serviceStatuses,
+        isDockerAvailable = isDockerAvailable,
+        isLoading = isLoading,
+        errorMessage = errorMessage,
+        logSession = LogConsoleSession(logs = logs, searchQuery = logSearchQuery),
+        isAutoScrollEnabled = isAutoScrollEnabled,
+        operatingServiceIds = operatingServiceIds
+    )
+
     /**
      * Flattened list of all configured services across all groups.
      */
@@ -42,12 +64,20 @@ data class DashboardUiState(
         get() = selectedServiceStatus?.containerState
 
     /**
+     * Active log lines in the log buffer.
+     */
+    val logs: List<String>
+        get() = logSession.logs
+
+    /**
+     * Active search query for filtering log lines.
+     */
+    val logSearchQuery: String
+        get() = logSession.searchQuery
+
+    /**
      * Filtered log lines based on [logSearchQuery] (case-insensitive substring match).
      */
     val filteredLogs: List<String>
-        get() = if (logSearchQuery.isBlank()) {
-            logs
-        } else {
-            logs.filter { it.contains(logSearchQuery, ignoreCase = true) }
-        }
+        get() = logSession.filteredLogs
 }

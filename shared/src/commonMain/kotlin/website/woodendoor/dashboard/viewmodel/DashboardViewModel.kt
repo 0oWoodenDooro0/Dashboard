@@ -42,7 +42,12 @@ class DashboardViewModel(
         viewModelScope
     }
 
-    private val _state = MutableStateFlow(DashboardUiState(isLoading = true))
+    private val _state = MutableStateFlow(
+        DashboardUiState(
+            isLoading = true,
+            logSession = LogConsoleSession(maxCapacity = maxLogBufferSize)
+        )
+    )
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
 
     private var logStreamJob: Job? = null
@@ -82,7 +87,7 @@ class DashboardViewModel(
                         current.copy(
                             config = newConfig,
                             selectedServiceId = updatedSelectedId,
-                            logs = if (serviceExists) current.logs else emptyList()
+                            logSession = if (serviceExists) current.logSession else current.logSession.cleared()
                         )
                     }
                     refreshHealthAndDocker()
@@ -170,7 +175,7 @@ class DashboardViewModel(
         _state.update {
             it.copy(
                 selectedServiceId = serviceId,
-                logs = emptyList()
+                logSession = it.logSession.cleared()
             )
         }
 
@@ -189,32 +194,27 @@ class DashboardViewModel(
                 serviceRuntimeManager.streamLogs(service, tail = 100)
                     .catch { e ->
                         _state.update { current ->
-                            val updatedLogs = current.logs + "[Error streaming logs: ${e.message}]"
-                            current.copy(logs = trimLogs(updatedLogs))
+                            current.copy(
+                                logSession = current.logSession.appendLine("[Error streaming logs: ${e.message}]")
+                            )
                         }
                     }
                     .collect { logLine ->
                         _state.update { current ->
-                            val updatedLogs = current.logs + logLine
-                            current.copy(logs = trimLogs(updatedLogs))
+                            current.copy(
+                                logSession = current.logSession.appendLine(logLine)
+                            )
                         }
                     }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _state.update { current ->
-                    val updatedLogs = current.logs + "[Error streaming logs: ${e.message}]"
-                    current.copy(logs = trimLogs(updatedLogs))
+                    current.copy(
+                        logSession = current.logSession.appendLine("[Error streaming logs: ${e.message}]")
+                    )
                 }
             }
-        }
-    }
-
-    private fun trimLogs(logs: List<String>): List<String> {
-        return if (logs.size > maxLogBufferSize) {
-            logs.takeLast(maxLogBufferSize)
-        } else {
-            logs
         }
     }
 
@@ -233,7 +233,7 @@ class DashboardViewModel(
         saveConfigInternal(updatedConfig)
 
         if (logSourceChanged) {
-            _state.update { it.copy(logs = emptyList()) }
+            _state.update { it.copy(logSession = it.logSession.cleared()) }
             startLogStreamForService(service)
         }
     }
@@ -290,7 +290,7 @@ class DashboardViewModel(
 
     fun startService(service: ServiceItem) {
         if (_state.value.selectedServiceId != service.id) {
-            _state.update { it.copy(selectedServiceId = service.id, logs = emptyList()) }
+            _state.update { it.copy(selectedServiceId = service.id, logSession = it.logSession.cleared()) }
         }
 
         scope.launch(defaultDispatcher) {
@@ -331,7 +331,7 @@ class DashboardViewModel(
 
     fun restartService(service: ServiceItem) {
         if (_state.value.selectedServiceId != service.id) {
-            _state.update { it.copy(selectedServiceId = service.id, logs = emptyList()) }
+            _state.update { it.copy(selectedServiceId = service.id, logSession = it.logSession.cleared()) }
         }
 
         scope.launch(defaultDispatcher) {
@@ -363,7 +363,7 @@ class DashboardViewModel(
     }
 
     fun setLogSearchQuery(query: String) {
-        _state.update { it.copy(logSearchQuery = query) }
+        _state.update { it.copy(logSession = it.logSession.withSearchQuery(query)) }
     }
 
     fun toggleAutoScroll(enabled: Boolean) {
@@ -371,7 +371,7 @@ class DashboardViewModel(
     }
 
     fun clearLogs() {
-        _state.update { it.copy(logs = emptyList()) }
+        _state.update { it.copy(logSession = it.logSession.cleared()) }
     }
 
     fun clearError() {
