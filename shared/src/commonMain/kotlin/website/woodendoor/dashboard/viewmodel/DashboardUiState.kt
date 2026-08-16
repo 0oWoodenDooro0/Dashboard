@@ -21,13 +21,13 @@ data class DashboardUiState(
      * Flattened list of all configured services across all groups.
      */
     val allServices: List<ServiceItem>
-        get() = config.groups.flatMap { it.services }
+        get() = config.allServices
 
     /**
      * Currently selected service, or null if no service is selected or found.
      */
     val selectedService: ServiceItem?
-        get() = allServices.find { it.id == selectedServiceId }
+        get() = selectedServiceId?.let { config.findService(it) }
 
     /**
      * Port health and runtime status of the currently selected service.
