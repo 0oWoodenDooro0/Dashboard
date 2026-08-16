@@ -1,5 +1,6 @@
 package website.woodendoor.dashboard.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,8 +11,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -19,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -50,105 +50,106 @@ fun DashboardTopBar(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Total Services Indicator
-                AssistChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = "${metrics.totalCount} Services",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    },
-                    leadingIcon = {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.onSurfaceVariant)
                         )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        labelColor = MaterialTheme.colorScheme.onSurface
-                    ),
-                    border = AssistChipDefaults.assistChipBorder(enabled = true)
-                )
+                        Text(
+                            text = "${metrics.totalCount} Services",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
 
                 // Healthy / Online Indicator
-                AssistChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = "${metrics.healthyCount} Online",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    },
-                    leadingIcon = {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = StatusHealthyBg.copy(alpha = 0.4f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
                                 .background(StatusHealthy)
                         )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = StatusHealthyBg.copy(alpha = 0.4f),
-                        labelColor = StatusHealthy
-                    ),
-                    border = null
-                )
+                        Text(
+                            text = "${metrics.healthyCount} Online",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = StatusHealthy
+                        )
+                    }
+                }
 
                 // Offline Indicator (if any)
                 if (metrics.offlineCount > 0) {
-                    AssistChip(
-                        onClick = {},
-                        label = {
-                            Text(
-                                text = "${metrics.offlineCount} Offline",
-                                style = MaterialTheme.typography.labelMedium
-                            )
-                        },
-                        leadingIcon = {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(StatusUnreachable)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(StatusUnreachable)
                             )
-                        },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            labelColor = MaterialTheme.colorScheme.error
-                        ),
-                        border = null
-                    )
+                            Text(
+                                text = "${metrics.offlineCount} Offline",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
 
                 // Docker Status Indicator
                 val dockerLabel = if (metrics.isDockerAvailable) "Docker Active" else "Docker Offline"
                 val dockerColor = if (metrics.isDockerAvailable) StatusHealthy else StatusNeutral
                 val dockerBg = if (metrics.isDockerAvailable) StatusHealthyBg.copy(alpha = 0.4f) else StatusNeutralBg
-                AssistChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = dockerLabel,
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    },
-                    leadingIcon = {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = dockerBg
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
                                 .background(dockerColor)
                         )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = dockerBg,
-                        labelColor = dockerColor
-                    ),
-                    border = null
-                )
+                        Text(
+                            text = dockerLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = dockerColor
+                        )
+                    }
+                }
             }
         },
         actions = {

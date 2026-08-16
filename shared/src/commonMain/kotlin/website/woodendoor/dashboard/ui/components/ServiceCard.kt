@@ -30,8 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -151,49 +150,37 @@ fun ServiceCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (service.port != null) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    text = ":${service.port}",
-                                    fontFamily = MonospaceFontFamily,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                labelColor = MaterialTheme.colorScheme.primary
-                            ),
-                            border = SuggestionChipDefaults.suggestionChipBorder(
-                                enabled = true,
-                                borderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            shape = MaterialTheme.shapes.extraSmall
-                        )
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = ":${service.port}",
+                                fontFamily = MonospaceFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
                     // Health / Latency badge
-                    SuggestionChip(
-                        onClick = {},
-                        label = {
-                            Text(
-                                text = portHealth.badgeLabel,
-                                fontFamily = MonospaceFontFamily,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        colors = SuggestionChipDefaults.suggestionChipColors(
-                            containerColor = statusBgColor.copy(alpha = 0.5f),
-                            labelColor = statusDotColor
-                        ),
-                        border = SuggestionChipDefaults.suggestionChipBorder(
-                            enabled = true,
-                            borderColor = statusDotColor.copy(alpha = 0.4f)
-                        ),
-                        shape = MaterialTheme.shapes.extraSmall
-                    )
+                    Surface(
+                        shape = MaterialTheme.shapes.extraSmall,
+                        color = statusBgColor.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, statusDotColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = portHealth.badgeLabel,
+                            fontFamily = MonospaceFontFamily,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = statusDotColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
 
@@ -412,25 +399,19 @@ fun SmallChip(
     bgColor: Color,
     modifier: Modifier = Modifier
 ) {
-    SuggestionChip(
-        onClick = {},
-        label = {
-            Text(
-                text = text,
-                fontFamily = MonospaceFontFamily,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-            )
-        },
-        colors = SuggestionChipDefaults.suggestionChipColors(
-            containerColor = bgColor,
-            labelColor = color
-        ),
-        border = SuggestionChipDefaults.suggestionChipBorder(
-            enabled = true,
-            borderColor = color.copy(alpha = 0.3f)
-        ),
+    Surface(
         shape = MaterialTheme.shapes.extraSmall,
+        color = bgColor,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.3f)),
         modifier = modifier
-    )
+    ) {
+        Text(
+            text = text,
+            fontFamily = MonospaceFontFamily,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
 }
