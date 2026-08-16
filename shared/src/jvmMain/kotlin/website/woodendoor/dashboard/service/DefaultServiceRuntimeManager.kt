@@ -104,21 +104,10 @@ class DefaultServiceRuntimeManager(
             ContainerState.Unknown("Error retrieving state")
         }
 
-        val isPortHealthy = portHealth is PortHealth.Open || portHealth is PortHealth.None
-        val isHealthy = when (service.logSource) {
-            is LogSource.Docker, is LogSource.DockerCompose, is LogSource.Command -> {
-                containerState is ContainerState.Running && isPortHealthy
-            }
-            is LogSource.LocalFile, is LogSource.None -> {
-                isPortHealthy && containerState !is ContainerState.Dead && containerState !is ContainerState.Exited
-            }
-        }
-
-        return ServiceRuntimeStatus(
-            serviceId = service.id,
+        return ServiceRuntimeStatus.of(
+            service = service,
             portHealth = portHealth,
             containerState = containerState,
-            isHealthy = isHealthy,
             lastCheckedTimestamp = now
         )
     }
