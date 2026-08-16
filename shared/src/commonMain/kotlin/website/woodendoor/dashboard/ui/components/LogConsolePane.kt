@@ -1,5 +1,6 @@
 package website.woodendoor.dashboard.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,8 +29,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SuggestionChip
-import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -215,26 +214,20 @@ fun ConsoleControlBar(
                     )
 
                     if (selectedService != null) {
-                        SuggestionChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    text = selectedService.name,
-                                    fontFamily = MonospaceFontFamily,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                labelColor = MaterialTheme.colorScheme.primary
-                            ),
-                            border = SuggestionChipDefaults.suggestionChipBorder(
-                                enabled = true,
-                                borderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            shape = MaterialTheme.shapes.extraSmall
-                        )
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = selectedService.name,
+                                fontFamily = MonospaceFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
 
                         Text(
                             text = describeLogSource(selectedService.logSource),
@@ -328,25 +321,19 @@ fun ConsoleControlBar(
 
                 // Line Counter Badge
                 val countText = if (searchQuery.isBlank()) "$totalLines lines" else "$filteredLines / $totalLines lines"
-                SuggestionChip(
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = countText,
-                            fontFamily = MonospaceFontFamily,
-                            fontSize = 11.sp
-                        )
-                    },
-                    colors = SuggestionChipDefaults.suggestionChipColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    border = SuggestionChipDefaults.suggestionChipBorder(
-                        enabled = true,
-                        borderColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    shape = MaterialTheme.shapes.extraSmall
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Text(
+                        text = countText,
+                        fontFamily = MonospaceFontFamily,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
