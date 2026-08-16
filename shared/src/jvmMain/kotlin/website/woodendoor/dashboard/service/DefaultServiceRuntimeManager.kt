@@ -38,12 +38,7 @@ class DefaultServiceRuntimeManager(
 
     override suspend fun getServiceState(service: ServiceItem): ContainerState {
         return when (val src = service.logSource) {
-            is LogSource.Docker -> dockerClient.getContainerState(src.containerName)
-            is LogSource.DockerCompose -> dockerClient.getComposeServiceState(
-                projectDir = src.projectDir,
-                serviceName = src.serviceName,
-                composeFile = src.composeFile
-            )
+            is LogSource.Docker, is LogSource.DockerCompose -> dockerClient.getContainerState(src)
             is LogSource.Command -> processManager.getProcessState(service.id)
             is LogSource.LocalFile, is LogSource.None -> ContainerState.Unknown("")
         }
@@ -93,20 +88,9 @@ class DefaultServiceRuntimeManager(
         val portHealth = checkPortHealth(service)
         val containerState = try {
             when (val src = service.logSource) {
-                is LogSource.Docker -> {
+                is LogSource.Docker, is LogSource.DockerCompose -> {
                     if (isDocker) {
-                        dockerClient.getContainerState(src.containerName)
-                    } else {
-                        ContainerState.Unknown("Docker daemon unavailable")
-                    }
-                }
-                is LogSource.DockerCompose -> {
-                    if (isDocker) {
-                        dockerClient.getComposeServiceState(
-                            projectDir = src.projectDir,
-                            serviceName = src.serviceName,
-                            composeFile = src.composeFile
-                        )
+                        dockerClient.getContainerState(src)
                     } else {
                         ContainerState.Unknown("Docker daemon unavailable")
                     }
@@ -141,13 +125,7 @@ class DefaultServiceRuntimeManager(
 
     override fun streamLogs(service: ServiceItem, tail: Int): Flow<String> {
         return when (val src = service.logSource) {
-            is LogSource.Docker -> dockerClient.streamLogs(src.containerName, tail = tail)
-            is LogSource.DockerCompose -> dockerClient.streamComposeLogs(
-                projectDir = src.projectDir,
-                serviceName = src.serviceName,
-                composeFile = src.composeFile,
-                tail = tail
-            )
+            is LogSource.Docker, is LogSource.DockerCompose -> dockerClient.streamLogs(src, tail = tail)
             is LogSource.Command -> processManager.streamLogs(service.id, tail = tail)
             is LogSource.LocalFile -> streamLocalFile(File(src.path), tail = tail)
             is LogSource.None -> emptyFlow()
@@ -156,12 +134,7 @@ class DefaultServiceRuntimeManager(
 
     override suspend fun startService(service: ServiceItem) {
         when (val src = service.logSource) {
-            is LogSource.Docker -> dockerClient.startContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerClient.startComposeService(
-                projectDir = src.projectDir,
-                serviceName = src.serviceName,
-                composeFile = src.composeFile
-            )
+            is LogSource.Docker, is LogSource.DockerCompose -> dockerClient.start(src)
             is LogSource.Command -> processManager.startProcess(
                 serviceId = service.id,
                 workingDir = src.workingDir,
@@ -176,12 +149,7 @@ class DefaultServiceRuntimeManager(
 
     override suspend fun stopService(service: ServiceItem) {
         when (val src = service.logSource) {
-            is LogSource.Docker -> dockerClient.stopContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerClient.stopComposeService(
-                projectDir = src.projectDir,
-                serviceName = src.serviceName,
-                composeFile = src.composeFile
-            )
+            is LogSource.Docker, is LogSource.DockerCompose -> dockerClient.stop(src)
             is LogSource.Command -> processManager.stopProcess(
                 serviceId = service.id,
                 stopCommand = src.stopCommand,
@@ -195,12 +163,7 @@ class DefaultServiceRuntimeManager(
 
     override suspend fun restartService(service: ServiceItem) {
         when (val src = service.logSource) {
-            is LogSource.Docker -> dockerClient.restartContainer(src.containerName)
-            is LogSource.DockerCompose -> dockerClient.restartComposeService(
-                projectDir = src.projectDir,
-                serviceName = src.serviceName,
-                composeFile = src.composeFile
-            )
+            is LogSource.Docker, is LogSource.DockerCompose -> dockerClient.restart(src)
             is LogSource.Command -> processManager.restartProcess(
                 serviceId = service.id,
                 workingDir = src.workingDir,
