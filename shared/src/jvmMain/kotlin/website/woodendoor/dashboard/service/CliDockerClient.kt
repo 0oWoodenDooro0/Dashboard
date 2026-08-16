@@ -8,6 +8,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
@@ -17,6 +18,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import website.woodendoor.dashboard.model.ContainerState
+import website.woodendoor.dashboard.model.LogSource
 
 data class ProcessResult(
     val exitCode: Int,
@@ -135,7 +137,13 @@ class CliDockerClient(
         }
     }
 
-    override suspend fun getContainerState(nameOrId: String): ContainerState {
+    override suspend fun getContainerState(target: LogSource): ContainerState = when (target) {
+        is LogSource.Docker -> getStandaloneContainerState(target.containerName)
+        is LogSource.DockerCompose -> getComposeContainerState(target.projectDir, target.serviceName, target.composeFile)
+        else -> ContainerState.Unknown("Unsupported log source: $target")
+    }
+
+    private suspend fun getStandaloneContainerState(nameOrId: String): ContainerState {
         val cmd = listOf(dockerExecutable, "inspect", nameOrId, "--format", "{{json .State}}")
         val result = executor.execute(cmd)
         if (result.exitCode != 0) {
@@ -156,46 +164,7 @@ class CliDockerClient(
         }
     }
 
-    override fun streamLogs(nameOrId: String, tail: Int): Flow<String> {
-        val cmd = listOf(
-            dockerExecutable,
-            "logs",
-            "-f",
-            "--tail",
-            tail.toString(),
-            nameOrId
-        )
-        return executor.executeStreaming(cmd)
-    }
-
-    override suspend fun startContainer(nameOrId: String) {
-        val cmd = listOf(dockerExecutable, "start", nameOrId)
-        val result = executor.execute(cmd)
-        if (result.exitCode != 0) {
-            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to start container $nameOrId" }
-            throw RuntimeException(error.trim())
-        }
-    }
-
-    override suspend fun stopContainer(nameOrId: String) {
-        val cmd = listOf(dockerExecutable, "stop", nameOrId)
-        val result = executor.execute(cmd, timeoutMs = 15000)
-        if (result.exitCode != 0) {
-            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop container $nameOrId" }
-            throw RuntimeException(error.trim())
-        }
-    }
-
-    override suspend fun restartContainer(nameOrId: String) {
-        val cmd = listOf(dockerExecutable, "restart", nameOrId)
-        val result = executor.execute(cmd, timeoutMs = 20000)
-        if (result.exitCode != 0) {
-            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart container $nameOrId" }
-            throw RuntimeException(error.trim())
-        }
-    }
-
-    override suspend fun getComposeServiceState(
+    private suspend fun getComposeContainerState(
         projectDir: String,
         serviceName: String,
         composeFile: String?
@@ -232,64 +201,112 @@ class CliDockerClient(
         }
     }
 
-    override fun streamComposeLogs(
-        projectDir: String,
-        serviceName: String,
-        composeFile: String?,
-        tail: Int
-    ): Flow<String> {
-        val cmd = buildComposeCommand(
-            projectDir = projectDir,
-            composeFile = composeFile,
-            subcommandAndArgs = listOf("logs", "-f", "--tail", tail.toString(), serviceName)
-        )
-        return executor.executeStreaming(cmd)
-    }
-
-    override suspend fun startComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-        val cmd = buildComposeCommand(
-            projectDir = projectDir,
-            composeFile = composeFile,
-            subcommandAndArgs = listOf("start", serviceName)
-        )
-        val result = executor.execute(cmd)
-        if (result.exitCode != 0) {
-            val upCmd = buildComposeCommand(
-                projectDir = projectDir,
-                composeFile = composeFile,
-                subcommandAndArgs = listOf("up", "-d", serviceName)
+    override fun streamLogs(target: LogSource, tail: Int): Flow<String> = when (target) {
+        is LogSource.Docker -> {
+            val cmd = listOf(
+                dockerExecutable,
+                "logs",
+                "-f",
+                "--tail",
+                tail.toString(),
+                target.containerName
             )
-            val upResult = executor.execute(upCmd, timeoutMs = 30000)
-            if (upResult.exitCode != 0) {
-                val error = upResult.stderr.ifBlank { upResult.stdout }.ifBlank { "Failed to start service $serviceName" }
-                throw RuntimeException(error.trim())
+            executor.executeStreaming(cmd)
+        }
+        is LogSource.DockerCompose -> {
+            val cmd = buildComposeCommand(
+                projectDir = target.projectDir,
+                composeFile = target.composeFile,
+                subcommandAndArgs = listOf("logs", "-f", "--tail", tail.toString(), target.serviceName)
+            )
+            executor.executeStreaming(cmd)
+        }
+        else -> emptyFlow()
+    }
+
+    override suspend fun start(target: LogSource) {
+        when (target) {
+            is LogSource.Docker -> {
+                val cmd = listOf(dockerExecutable, "start", target.containerName)
+                val result = executor.execute(cmd)
+                if (result.exitCode != 0) {
+                    val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to start container ${target.containerName}" }
+                    throw RuntimeException(error.trim())
+                }
             }
+            is LogSource.DockerCompose -> {
+                val cmd = buildComposeCommand(
+                    projectDir = target.projectDir,
+                    composeFile = target.composeFile,
+                    subcommandAndArgs = listOf("start", target.serviceName)
+                )
+                val result = executor.execute(cmd)
+                if (result.exitCode != 0) {
+                    val upCmd = buildComposeCommand(
+                        projectDir = target.projectDir,
+                        composeFile = target.composeFile,
+                        subcommandAndArgs = listOf("up", "-d", target.serviceName)
+                    )
+                    val upResult = executor.execute(upCmd, timeoutMs = 30000)
+                    if (upResult.exitCode != 0) {
+                        val error = upResult.stderr.ifBlank { upResult.stdout }.ifBlank { "Failed to start service ${target.serviceName}" }
+                        throw RuntimeException(error.trim())
+                    }
+                }
+            }
+            else -> throw UnsupportedOperationException("Unsupported target for Docker start: $target")
         }
     }
 
-    override suspend fun stopComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-        val cmd = buildComposeCommand(
-            projectDir = projectDir,
-            composeFile = composeFile,
-            subcommandAndArgs = listOf("stop", serviceName)
-        )
-        val result = executor.execute(cmd, timeoutMs = 15000)
-        if (result.exitCode != 0) {
-            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop service $serviceName" }
-            throw RuntimeException(error.trim())
+    override suspend fun stop(target: LogSource) {
+        when (target) {
+            is LogSource.Docker -> {
+                val cmd = listOf(dockerExecutable, "stop", target.containerName)
+                val result = executor.execute(cmd, timeoutMs = 15000)
+                if (result.exitCode != 0) {
+                    val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop container ${target.containerName}" }
+                    throw RuntimeException(error.trim())
+                }
+            }
+            is LogSource.DockerCompose -> {
+                val cmd = buildComposeCommand(
+                    projectDir = target.projectDir,
+                    composeFile = target.composeFile,
+                    subcommandAndArgs = listOf("stop", target.serviceName)
+                )
+                val result = executor.execute(cmd, timeoutMs = 15000)
+                if (result.exitCode != 0) {
+                    val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to stop service ${target.serviceName}" }
+                    throw RuntimeException(error.trim())
+                }
+            }
+            else -> throw UnsupportedOperationException("Unsupported target for Docker stop: $target")
         }
     }
 
-    override suspend fun restartComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-        val cmd = buildComposeCommand(
-            projectDir = projectDir,
-            composeFile = composeFile,
-            subcommandAndArgs = listOf("restart", serviceName)
-        )
-        val result = executor.execute(cmd, timeoutMs = 20000)
-        if (result.exitCode != 0) {
-            val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart service $serviceName" }
-            throw RuntimeException(error.trim())
+    override suspend fun restart(target: LogSource) {
+        when (target) {
+            is LogSource.Docker -> {
+                val cmd = listOf(dockerExecutable, "restart", target.containerName)
+                val result = executor.execute(cmd, timeoutMs = 20000)
+                if (result.exitCode != 0) {
+                    val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart container ${target.containerName}" }
+                    throw RuntimeException(error.trim())
+                }
+            }
+            is LogSource.DockerCompose -> {
+                val cmd = buildComposeCommand(
+                    projectDir = target.projectDir,
+                    composeFile = target.composeFile,
+                    subcommandAndArgs = listOf("restart", target.serviceName)
+                )
+                val result = executor.execute(cmd, timeoutMs = 20000)
+                if (result.exitCode != 0) {
+                    val error = result.stderr.ifBlank { result.stdout }.ifBlank { "Failed to restart service ${target.serviceName}" }
+                    throw RuntimeException(error.trim())
+                }
+            }
+            else -> throw UnsupportedOperationException("Unsupported target for Docker restart: $target")
         }
     }
 

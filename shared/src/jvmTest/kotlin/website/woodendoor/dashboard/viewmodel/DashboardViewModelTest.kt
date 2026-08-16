@@ -148,84 +148,42 @@ class DashboardViewModelTest {
     private class FakeDockerClient(
         var isDockerAvailableResult: Boolean = true
     ) : DockerClient {
-        val containerStates = mutableMapOf<String, ContainerState>()
-        val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
-        var onStartContainer: (suspend (String) -> Unit)? = null
-        var onStopContainer: (suspend (String) -> Unit)? = null
-        var onRestartContainer: (suspend (String) -> Unit)? = null
+        val targetStates = mutableMapOf<LogSource, ContainerState>()
+        val flowMap = mutableMapOf<LogSource, MutableSharedFlow<String>>()
+        var onStart: (suspend (LogSource) -> Unit)? = null
+        var onStop: (suspend (LogSource) -> Unit)? = null
+        var onRestart: (suspend (LogSource) -> Unit)? = null
         var shouldThrowOnStart: Boolean = false
         var shouldThrowOnStop: Boolean = false
         var shouldThrowOnRestart: Boolean = false
 
-        // Compose properties
-        val composeStates = mutableMapOf<String, ContainerState>()
-        val composeFlowMap = mutableMapOf<String, MutableSharedFlow<String>>()
-        var onStartComposeService: (suspend (String) -> Unit)? = null
-        var onStopComposeService: (suspend (String) -> Unit)? = null
-        var onRestartComposeService: (suspend (String) -> Unit)? = null
-        var shouldThrowOnComposeStart: Boolean = false
-        var shouldThrowOnComposeStop: Boolean = false
-        var shouldThrowOnComposeRestart: Boolean = false
-
-        fun getOrCreateFlow(nameOrId: String): MutableSharedFlow<String> =
-            flowMap.getOrPut(nameOrId) { MutableSharedFlow(extraBufferCapacity = 64) }
-
-        fun getOrCreateComposeFlow(key: String): MutableSharedFlow<String> =
-            composeFlowMap.getOrPut(key) { MutableSharedFlow(extraBufferCapacity = 64) }
+        fun getOrCreateFlow(target: LogSource): MutableSharedFlow<String> =
+            flowMap.getOrPut(target) { MutableSharedFlow(extraBufferCapacity = 64) }
 
         override suspend fun isDockerAvailable(): Boolean = isDockerAvailableResult
 
-        override suspend fun getContainerState(nameOrId: String): ContainerState {
-            return containerStates[nameOrId] ?: ContainerState.Running(status = "Up 2 hours")
+        override suspend fun getContainerState(target: LogSource): ContainerState {
+            return targetStates[target] ?: ContainerState.Running(status = "Up 2 hours")
         }
 
-        override fun streamLogs(nameOrId: String, tail: Int): Flow<String> = getOrCreateFlow(nameOrId)
+        override fun streamLogs(target: LogSource, tail: Int): Flow<String> = getOrCreateFlow(target)
 
-        override suspend fun startContainer(nameOrId: String) {
-            if (shouldThrowOnStart) throw RuntimeException("Failed to start container $nameOrId")
-            onStartContainer?.invoke(nameOrId)
-            containerStates[nameOrId] = ContainerState.Running(status = "running")
+        override suspend fun start(target: LogSource) {
+            if (shouldThrowOnStart) throw RuntimeException("Failed to start container $target")
+            onStart?.invoke(target)
+            targetStates[target] = ContainerState.Running(status = "running")
         }
 
-        override suspend fun stopContainer(nameOrId: String) {
-            if (shouldThrowOnStop) throw RuntimeException("Failed to stop container $nameOrId")
-            onStopContainer?.invoke(nameOrId)
-            containerStates[nameOrId] = ContainerState.Exited(exitCode = 0, status = "exited")
+        override suspend fun stop(target: LogSource) {
+            if (shouldThrowOnStop) throw RuntimeException("Failed to stop container $target")
+            onStop?.invoke(target)
+            targetStates[target] = ContainerState.Exited(exitCode = 0, status = "exited")
         }
 
-        override suspend fun restartContainer(nameOrId: String) {
-            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart container $nameOrId")
-            onRestartContainer?.invoke(nameOrId)
-            containerStates[nameOrId] = ContainerState.Running(status = "running")
-        }
-
-        override suspend fun getComposeServiceState(projectDir: String, serviceName: String, composeFile: String?): ContainerState {
-            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
-            return composeStates[key] ?: ContainerState.Running(status = "Up 1 hour")
-        }
-
-        override fun streamComposeLogs(projectDir: String, serviceName: String, composeFile: String?, tail: Int): Flow<String> =
-            getOrCreateComposeFlow(serviceName)
-
-        override suspend fun startComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnComposeStart) throw RuntimeException("Failed to start compose service $serviceName")
-            onStartComposeService?.invoke(serviceName)
-            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
-            composeStates[key] = ContainerState.Running(status = "running")
-        }
-
-        override suspend fun stopComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnComposeStop) throw RuntimeException("Failed to stop compose service $serviceName")
-            onStopComposeService?.invoke(serviceName)
-            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
-            composeStates[key] = ContainerState.Exited(exitCode = 0, status = "exited")
-        }
-
-        override suspend fun restartComposeService(projectDir: String, serviceName: String, composeFile: String?) {
-            if (shouldThrowOnComposeRestart) throw RuntimeException("Failed to restart compose service $serviceName")
-            onRestartComposeService?.invoke(serviceName)
-            val key = if (composeFile != null) "compose:$projectDir:$serviceName:$composeFile" else "compose:$projectDir:$serviceName"
-            composeStates[key] = ContainerState.Running(status = "running")
+        override suspend fun restart(target: LogSource) {
+            if (shouldThrowOnRestart) throw RuntimeException("Failed to restart container $target")
+            onRestart?.invoke(target)
+            targetStates[target] = ContainerState.Running(status = "running")
         }
     }
 
@@ -286,8 +244,7 @@ class DashboardViewModelTest {
 
     private fun getOrCreateLogFlow(service: ServiceItem): MutableSharedFlow<String> {
         return when (val src = service.logSource) {
-            is LogSource.Docker -> fakeDockerClient.getOrCreateFlow(src.containerName)
-            is LogSource.DockerCompose -> fakeDockerClient.getOrCreateComposeFlow(src.serviceName)
+            is LogSource.Docker, is LogSource.DockerCompose -> fakeDockerClient.getOrCreateFlow(src)
             is LogSource.Command -> fakeProcessManager.getOrCreateFlow(service.id)
             is LogSource.LocalFile, is LogSource.None -> MutableSharedFlow(extraBufferCapacity = 64)
         }
@@ -382,7 +339,7 @@ class DashboardViewModelTest {
 
         // Change health of web-1 to closed and docker container state to exited
         fakeHealthChecker.customHealthMap["web-1"] = PortHealth.Closed("Connection refused")
-        fakeDockerClient.containerStates["postgres-db"] = ContainerState.Exited(exitCode = 1)
+        fakeDockerClient.targetStates[sampleService2.logSource] = ContainerState.Exited(exitCode = 1)
 
         // Advance by polling interval (5 seconds = 5000ms)
         advanceTimeBy(5100)
@@ -699,8 +656,7 @@ class DashboardViewModelTest {
         fakeConfigRepository.saveConfig(composeConfig)
         runCurrent()
 
-        val composeKey = "compose:/apps/conflux:backend"
-        fakeDockerClient.composeStates[composeKey] = ContainerState.Exited(exitCode = 143)
+        fakeDockerClient.targetStates[sampleService4.logSource] = ContainerState.Exited(exitCode = 143)
 
         // Advance by polling interval
         advanceTimeBy(5100)
@@ -1110,7 +1066,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         var wasOperatingDuringExecution = false
-        fakeDockerClient.onStartContainer = { containerName ->
+        fakeDockerClient.onStart = { target ->
             wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
         }
 
@@ -1128,7 +1084,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         var wasOperatingDuringExecution = false
-        fakeDockerClient.onStopContainer = { containerName ->
+        fakeDockerClient.onStop = { target ->
             wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
         }
 
@@ -1146,7 +1102,7 @@ class DashboardViewModelTest {
         runCurrent()
 
         var wasOperatingDuringExecution = false
-        fakeDockerClient.onRestartContainer = { containerName ->
+        fakeDockerClient.onRestart = { target ->
             wasOperatingDuringExecution = "db-1" in viewModel.state.value.operatingServiceIds
         }
 
