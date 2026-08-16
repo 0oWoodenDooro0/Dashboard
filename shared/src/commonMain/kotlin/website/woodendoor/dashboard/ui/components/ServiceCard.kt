@@ -44,8 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.woodendoor.dashboard.model.ContainerState
 import website.woodendoor.dashboard.model.LogSource
+import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.ServiceRuntimeStatus
+import website.woodendoor.dashboard.model.badgeLabel
 import website.woodendoor.dashboard.ui.theme.ContainerExited
 import website.woodendoor.dashboard.ui.theme.ContainerPaused
 import website.woodendoor.dashboard.ui.theme.ContainerRestarting
@@ -59,9 +61,6 @@ import website.woodendoor.dashboard.ui.theme.StatusNeutral
 import website.woodendoor.dashboard.ui.theme.StatusNeutralBg
 import website.woodendoor.dashboard.ui.theme.StatusUnreachable
 import website.woodendoor.dashboard.ui.theme.StatusUnreachableBg
-import website.woodendoor.dashboard.ui.util.ContainerStatusType
-import website.woodendoor.dashboard.ui.util.PortStatusType
-import website.woodendoor.dashboard.ui.util.UiHelpers
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -80,12 +79,12 @@ fun ServiceCard(
     modifier: Modifier = Modifier
 ) {
     val containerState = status?.containerState
-    val portHealthInfo = UiHelpers.getPortHealthDisplayInfo(status?.portHealth)
-    val (statusDotColor, statusBgColor) = when (portHealthInfo.statusType) {
-        PortStatusType.HEALTHY -> Pair(StatusHealthy, StatusHealthyBg)
-        PortStatusType.CLOSED -> Pair(StatusClosed, StatusClosedBg)
-        PortStatusType.UNREACHABLE -> Pair(StatusUnreachable, StatusUnreachableBg)
-        PortStatusType.NO_PORT -> Pair(StatusNeutral, StatusNeutralBg)
+    val portHealth = status?.portHealth ?: PortHealth.None
+    val (statusDotColor, statusBgColor) = when (portHealth) {
+        is PortHealth.Open -> Pair(StatusHealthy, StatusHealthyBg)
+        is PortHealth.Closed -> Pair(StatusClosed, StatusClosedBg)
+        is PortHealth.Unreachable -> Pair(StatusUnreachable, StatusUnreachableBg)
+        PortHealth.None -> Pair(StatusNeutral, StatusNeutralBg)
     }
 
     val cardBorder = if (isSelected) {
@@ -179,7 +178,7 @@ fun ServiceCard(
                         onClick = {},
                         label = {
                             Text(
-                                text = portHealthInfo.label,
+                                text = portHealth.badgeLabel,
                                 fontFamily = MonospaceFontFamily,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -220,16 +219,15 @@ fun ServiceCard(
             ) {
                 // Docker container state chip
                 if (containerState != null) {
-                    val containerInfo = UiHelpers.getContainerStateDisplayInfo(containerState)
-                    val (stateColor, stateBg) = when (containerInfo.statusType) {
-                        ContainerStatusType.RUNNING -> Pair(ContainerRunning, StatusHealthyBg)
-                        ContainerStatusType.PAUSED -> Pair(ContainerPaused, StatusClosedBg)
-                        ContainerStatusType.RESTARTING -> Pair(ContainerRestarting, MaterialTheme.colorScheme.surfaceContainerHigh)
-                        ContainerStatusType.EXITED, ContainerStatusType.DEAD -> Pair(ContainerExited, StatusUnreachableBg)
-                        ContainerStatusType.NOT_FOUND, ContainerStatusType.UNKNOWN -> Pair(StatusNeutral, StatusNeutralBg)
+                    val (stateColor, stateBg) = when (containerState) {
+                        is ContainerState.Running -> Pair(ContainerRunning, StatusHealthyBg)
+                        is ContainerState.Paused -> Pair(ContainerPaused, StatusClosedBg)
+                        is ContainerState.Restarting -> Pair(ContainerRestarting, MaterialTheme.colorScheme.surfaceContainerHigh)
+                        is ContainerState.Exited, is ContainerState.Dead -> Pair(ContainerExited, StatusUnreachableBg)
+                        is ContainerState.NotFound, is ContainerState.Unknown -> Pair(StatusNeutral, StatusNeutralBg)
                     }
                     SmallChip(
-                        text = containerInfo.label,
+                        text = containerState.badgeLabel,
                         color = stateColor,
                         bgColor = stateBg.copy(alpha = 0.5f)
                     )
