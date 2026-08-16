@@ -92,6 +92,19 @@ data class DashboardConfig(
         groups.find { group -> group.services.any { it.id == serviceId } }
 
     /**
+     * Generates a unique service ID slug from the provided service [name],
+     * taking into account all existing service IDs in this config (except [currentServiceId] if provided).
+     */
+    fun generateServiceId(name: String, currentServiceId: String? = null): String {
+        val existingIds = if (currentServiceId != null) {
+            allServiceIds - currentServiceId
+        } else {
+            allServiceIds
+        }
+        return generateSlug(name, existingIds)
+    }
+
+    /**
      * Resolves a guaranteed unique service ID using numeric suffix incrementation (-2, -3, ...).
      * If [proposedId] is already unique (or matches [currentServiceId]), returns [proposedId] untouched.
      */
@@ -113,6 +126,31 @@ data class DashboardConfig(
             candidate = "$proposedId-$suffix"
         }
         return candidate
+    }
+
+    companion object {
+        /**
+         * Normalizes a service name or arbitrary string into a URL/ID-safe slug,
+         * ensuring uniqueness against [existingIds] with numeric suffix incrementation (-2, -3, ...).
+         */
+        fun generateSlug(input: String, existingIds: Set<String> = emptySet()): String {
+            val baseSlug = input.lowercase()
+                .replace(Regex("""[^a-z0-9]+"""), "-")
+                .trim('-')
+                .ifEmpty { "service-${System.currentTimeMillis()}" }
+
+            if (baseSlug !in existingIds) {
+                return baseSlug
+            }
+
+            var suffix = 2
+            var candidate = "$baseSlug-$suffix"
+            while (candidate in existingIds) {
+                suffix++
+                candidate = "$baseSlug-$suffix"
+            }
+            return candidate
+        }
     }
 
     /**

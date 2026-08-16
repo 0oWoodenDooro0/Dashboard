@@ -114,7 +114,7 @@ class DashboardConfigDomainTest {
         assertNull(config.findGroupForService("ghost-service"))
     }
 
-    // --- ID Uniqueness & Sanitization Tests ---
+    // --- ID Uniqueness & Slug Generation Tests ---
 
     @Test
     fun ensureUniqueServiceId_whenIdIsUnique_returnsOriginalId() {
@@ -153,6 +153,63 @@ class DashboardConfigDomainTest {
         val config = createSampleConfig()
         val uniqueId = config.ensureUniqueServiceId("frontend", currentServiceId = "frontend")
         assertEquals("frontend", uniqueId)
+    }
+
+    @Test
+    fun generateSlug_convertsToLowerCaseAndReplacesSpecialChars() {
+        val slug = DashboardConfig.generateSlug("My Awesome Service #1!")
+        assertEquals("my-awesome-service-1", slug)
+    }
+
+    @Test
+    fun generateSlug_trimsLeadingAndTrailingDashes() {
+        val slug = DashboardConfig.generateSlug("---Test Service---")
+        assertEquals("test-service", slug)
+    }
+
+    @Test
+    fun generateSlug_whenEmptyOrOnlySpecialChars_generatesFallbackSlug() {
+        val slug = DashboardConfig.generateSlug("!@#$%^&*")
+        assertTrue(slug.startsWith("service-"))
+    }
+
+    @Test
+    fun generateSlug_whenCollisionExists_appendsNumericSuffix() {
+        val existing = setOf("my-app")
+        val slug = DashboardConfig.generateSlug("My App", existing)
+        assertEquals("my-app-2", slug)
+    }
+
+    @Test
+    fun generateSlug_whenMultipleCollisionsExist_incrementsSuffix() {
+        val existing = setOf("test", "test-2", "test-3")
+        val slug = DashboardConfig.generateSlug("Test", existing)
+        assertEquals("test-4", slug)
+    }
+
+    @Test
+    fun generateServiceId_withExistingServices_producesUniqueSlug() {
+        val config = createSampleConfig()
+        val generatedId = config.generateServiceId("Analytics Service")
+        assertEquals("analytics-service", generatedId)
+    }
+
+    @Test
+    fun generateServiceId_whenCollidesWithExistingService_appendsSuffix() {
+        val config = createSampleConfig()
+        // "Frontend App" -> base slug is "frontend-app" which is not in ["frontend", "backend", "postgres"]
+        assertEquals("frontend-app", config.generateServiceId("Frontend App"))
+
+        // Exact collision with "frontend"
+        val collidingId = config.generateServiceId("Frontend")
+        assertEquals("frontend-2", collidingId)
+    }
+
+    @Test
+    fun generateServiceId_whenMatchesCurrentServiceId_allowsSameId() {
+        val config = createSampleConfig()
+        val id = config.generateServiceId("frontend", currentServiceId = "frontend")
+        assertEquals("frontend", id)
     }
 
     // --- Immutable Mutation Tests ---

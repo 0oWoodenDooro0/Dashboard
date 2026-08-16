@@ -135,7 +135,6 @@ class ServiceRuntimeManagerTest {
         var shouldThrowOnStop = false
         var shouldThrowOnRestart = false
         var lastRequestedServiceId: String? = null
-        var lastRequestedSource: LogSource.Command? = null
         var lastRequestedTail: Int? = null
         var customLogFlow: Flow<String> = flowOf("process line 1", "process line 2")
 
@@ -166,12 +165,6 @@ class ServiceRuntimeManagerTest {
 
         override fun streamLogs(serviceId: String, tail: Int): Flow<String> {
             lastRequestedServiceId = serviceId
-            lastRequestedTail = tail
-            return customLogFlow
-        }
-
-        override fun streamLogs(source: LogSource.Command, tail: Int): Flow<String> {
-            lastRequestedSource = source
             lastRequestedTail = tail
             return customLogFlow
         }
