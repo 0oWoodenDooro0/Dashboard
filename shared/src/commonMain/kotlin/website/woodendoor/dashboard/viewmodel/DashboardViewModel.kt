@@ -76,7 +76,7 @@ class DashboardViewModel(
                 configRepository.observeConfig().collect { newConfig ->
                     _state.update { current ->
                         val serviceExists = current.selectedServiceId != null &&
-                            newConfig.groups.flatMap { g -> g.services }.any { s -> s.id == current.selectedServiceId }
+                            newConfig.findService(current.selectedServiceId) != null
                         val updatedSelectedId = if (serviceExists) current.selectedServiceId else null
 
                         current.copy(
@@ -219,40 +219,7 @@ class DashboardViewModel(
     }
 
     fun addService(service: ServiceItem, groupId: String? = null) {
-        val currentConfig = _state.value.config
-        val targetGroupId = groupId ?: currentConfig.groups.firstOrNull()?.id ?: "default"
-
-        val existingIds = currentConfig.groups.flatMap { it.services }.map { it.id }.toSet()
-        val uniqueId = if (service.id in existingIds) {
-            var suffix = 2
-            var candidate = "${service.id}-$suffix"
-            while (candidate in existingIds) {
-                suffix++
-                candidate = "${service.id}-$suffix"
-            }
-            candidate
-        } else {
-            service.id
-        }
-        val sanitizedService = if (uniqueId != service.id) service.copy(id = uniqueId) else service
-
-        val updatedGroups = if (currentConfig.groups.any { it.id == targetGroupId }) {
-            currentConfig.groups.map { group ->
-                if (group.id == targetGroupId) {
-                    group.copy(services = group.services + sanitizedService)
-                } else {
-                    group
-                }
-            }
-        } else {
-            currentConfig.groups + ServiceGroup(
-                id = targetGroupId,
-                name = targetGroupId,
-                services = listOf(sanitizedService)
-            )
-        }
-
-        val updatedConfig = currentConfig.copy(groups = updatedGroups)
+        val updatedConfig = _state.value.config.withServiceAdded(service, targetGroupIdOrName = groupId)
         saveConfigInternal(updatedConfig)
     }
 
@@ -262,10 +229,7 @@ class DashboardViewModel(
         val isSelected = _state.value.selectedServiceId == service.id
         val logSourceChanged = isSelected && currentSelected?.logSource != service.logSource
 
-        val updatedGroups = currentConfig.groups.map { group ->
-            group.copy(services = group.services.map { s -> if (s.id == service.id) service else s })
-        }
-        val updatedConfig = currentConfig.copy(groups = updatedGroups)
+        val updatedConfig = currentConfig.withServiceUpdated(service)
         saveConfigInternal(updatedConfig)
 
         if (logSourceChanged) {
@@ -276,11 +240,8 @@ class DashboardViewModel(
 
     fun deleteService(serviceId: String) {
         val currentConfig = _state.value.config
-        val targetService = _state.value.allServices.find { it.id == serviceId }
-        val updatedGroups = currentConfig.groups.map { group ->
-            group.copy(services = group.services.filterNot { it.id == serviceId })
-        }
-        val updatedConfig = currentConfig.copy(groups = updatedGroups)
+        val targetService = currentConfig.findService(serviceId)
+        val updatedConfig = currentConfig.withServiceDeleted(serviceId)
 
         if (_state.value.selectedServiceId == serviceId) {
             selectService(null)
@@ -298,14 +259,13 @@ class DashboardViewModel(
     }
 
     fun addGroup(group: ServiceGroup) {
-        val currentConfig = _state.value.config
-        val updatedConfig = currentConfig.copy(groups = currentConfig.groups + group)
+        val updatedConfig = _state.value.config.withGroupAdded(group)
         saveConfigInternal(updatedConfig)
     }
 
     fun deleteGroup(groupId: String) {
         val currentConfig = _state.value.config
-        val targetGroup = currentConfig.groups.find { it.id == groupId }
+        val targetGroup = currentConfig.findGroup(groupId)
         val targetServiceIds = targetGroup?.services?.map { it.id }?.toSet() ?: emptySet()
 
         if (_state.value.selectedServiceId in targetServiceIds) {
@@ -324,7 +284,7 @@ class DashboardViewModel(
             }
         }
 
-        val updatedConfig = currentConfig.copy(groups = currentConfig.groups.filterNot { it.id == groupId })
+        val updatedConfig = currentConfig.withGroupDeleted(groupId)
         saveConfigInternal(updatedConfig)
     }
 
