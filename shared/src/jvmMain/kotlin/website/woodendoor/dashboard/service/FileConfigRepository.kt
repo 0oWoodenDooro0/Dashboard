@@ -21,9 +21,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import website.woodendoor.dashboard.model.DashboardConfig
-import website.woodendoor.dashboard.model.LogSource
-import website.woodendoor.dashboard.model.ServiceGroup
-import website.woodendoor.dashboard.model.ServiceItem
 
 class FileConfigRepository(
     val configFile: File = resolveDefaultConfigFile(),
@@ -91,62 +88,7 @@ class FileConfigRepository(
             return DashboardConfig(
                 version = 1,
                 pollingIntervalSeconds = 5,
-                groups = listOf(
-                    ServiceGroup(
-                        id = "web-apps",
-                        name = "Web Applications",
-                        services = listOf(
-                            ServiceItem(
-                                id = "frontend-dev",
-                                name = "Frontend Web",
-                                host = "127.0.0.1",
-                                port = 3000,
-                                openUrl = "http://localhost:3000",
-                                logSource = LogSource.Command(
-                                    workingDir = "/apps/frontend-web",
-                                    startCommand = "npm run dev",
-                                    stopCommand = "npm run stop"
-                                ),
-                                description = "Frontend Development Server",
-                                tags = listOf("frontend", "ui")
-                            ),
-                            ServiceItem(
-                                id = "backend-api",
-                                name = "Backend API",
-                                host = "127.0.0.1",
-                                port = 8000,
-                                openUrl = "http://localhost:8000",
-                                logSource = LogSource.Docker(containerName = "backend-api"),
-                                description = "Backend REST API Server",
-                                tags = listOf("backend", "api")
-                            )
-                        )
-                    ),
-                    ServiceGroup(
-                        id = "databases",
-                        name = "Databases & Cache",
-                        services = listOf(
-                            ServiceItem(
-                                id = "postgres-db",
-                                name = "PostgreSQL",
-                                host = "127.0.0.1",
-                                port = 5432,
-                                logSource = LogSource.Docker(containerName = "postgres-db"),
-                                description = "Primary Relational Database",
-                                tags = listOf("db", "sql")
-                            ),
-                            ServiceItem(
-                                id = "redis-cache",
-                                name = "Redis",
-                                host = "127.0.0.1",
-                                port = 6379,
-                                logSource = LogSource.Docker(containerName = "redis-cache"),
-                                description = "In-memory Cache & Queue",
-                                tags = listOf("cache", "nosql")
-                            )
-                        )
-                    )
-                )
+                groups = emptyList()
             )
         }
     }

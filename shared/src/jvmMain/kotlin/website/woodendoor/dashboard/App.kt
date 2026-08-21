@@ -87,7 +87,7 @@ fun App(
                     onRefresh = { viewModel.triggerRefresh() },
                     onAddService = {
                         editingService = null
-                        editingGroupName = state.config.groups.firstOrNull()?.name ?: "Web Applications"
+                        editingGroupName = state.config.groups.firstOrNull()?.name ?: "Default"
                         showEditDialog = true
                     }
                 )
@@ -114,7 +114,7 @@ fun App(
                     },
                     onAddServiceToGroup = { groupName ->
                         editingService = null
-                        editingGroupName = groupName ?: state.config.groups.firstOrNull()?.name ?: "Web Applications"
+                        editingGroupName = groupName ?: state.config.groups.firstOrNull()?.name ?: "Default"
                         showEditDialog = true
                     },
                     onEditService = { service, groupName ->
