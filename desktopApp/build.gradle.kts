@@ -19,13 +19,13 @@ compose.desktop {
     application {
         mainClass = "website.woodendoor.dashboard.MainKt"
 
+        val osName = System.getProperty("os.name", "").lowercase()
         nativeDistributions {
-            targetFormats(
-                TargetFormat.Dmg,
-                TargetFormat.Msi,
-                TargetFormat.Deb,
-                TargetFormat.AppImage
-            )
+            when {
+                osName.contains("mac") -> targetFormats(TargetFormat.Dmg)
+                osName.contains("win") -> targetFormats(TargetFormat.Msi, TargetFormat.Exe)
+                else -> targetFormats(TargetFormat.Deb, TargetFormat.AppImage)
+            }
             packageName = "website.woodendoor.dashboard"
             packageVersion = "1.0.0"
             description = "WoodenDoor Dashboard - Service & Log Observability"
