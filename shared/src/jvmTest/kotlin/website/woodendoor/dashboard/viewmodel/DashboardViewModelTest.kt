@@ -568,6 +568,52 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun updateService_withDifferentGroupId_movesServiceToTargetGroupAndSaves() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val secondGroup = ServiceGroup(id = "db-group", name = "Databases", services = emptyList())
+        val multiGroupConfig = sampleConfig.copy(groups = listOf(sampleGroup, secondGroup))
+        fakeConfigRepository.saveConfig(multiGroupConfig)
+
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val updatedWeb1 = sampleService1.copy(name = "Updated Web App", port = 3001)
+        viewModel.updateService(updatedWeb1, groupId = "db-group")
+        runCurrent()
+
+        val currentConfig = fakeConfigRepository.currentConfig
+        val sourceGroup = currentConfig.groups.find { it.id == "core-group" }
+        val targetGroup = currentConfig.groups.find { it.id == "db-group" }
+
+        assertNotNull(sourceGroup)
+        assertNotNull(targetGroup)
+        assertFalse(sourceGroup.services.any { it.id == "web-1" })
+        assertTrue(targetGroup.services.any { it.id == "web-1" })
+    }
+
+    @Test
+    fun updateService_withNewGroupName_createsNewGroupAndMovesServiceAndSaves() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val updatedWeb1 = sampleService1.copy(name = "Updated Web App", port = 3001)
+        viewModel.updateService(updatedWeb1, groupId = "New Services")
+        runCurrent()
+
+        val currentConfig = fakeConfigRepository.currentConfig
+        assertEquals(2, currentConfig.groups.size)
+
+        val sourceGroup = currentConfig.groups.find { it.id == "core-group" }
+        val newGroup = currentConfig.groups.find { it.name == "New Services" }
+
+        assertNotNull(sourceGroup)
+        assertNotNull(newGroup)
+        assertFalse(sourceGroup.services.any { it.id == "web-1" })
+        assertEquals(listOf("web-1"), newGroup.services.map { it.id })
+    }
+
+    @Test
     fun updateService_ifSelectedAndLogSourceChanged_restartsLogStream() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val viewModel = createViewModel(this, dispatcher)

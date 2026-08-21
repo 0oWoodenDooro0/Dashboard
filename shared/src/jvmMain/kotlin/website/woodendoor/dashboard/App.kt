@@ -181,10 +181,10 @@ fun App(
                     existingServices = state.allServices,
                     onDismiss = { showEditDialog = false },
                     onSave = { serviceItem, groupName ->
+                        val matchingGroup = state.config.groups.find { it.name.equals(groupName, ignoreCase = true) }
                         if (editingService != null) {
-                            viewModel.updateService(serviceItem)
+                            viewModel.updateService(serviceItem, groupId = matchingGroup?.id ?: groupName)
                         } else {
-                            val matchingGroup = state.config.groups.find { it.name.equals(groupName, ignoreCase = true) }
                             viewModel.addService(serviceItem, groupId = matchingGroup?.id ?: groupName)
                         }
                         showEditDialog = false
