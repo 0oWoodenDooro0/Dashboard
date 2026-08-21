@@ -26,7 +26,7 @@ import website.woodendoor.dashboard.model.ServiceGroup
 import website.woodendoor.dashboard.model.ServiceItem
 
 class FileConfigRepository(
-    val configFile: File = File("config/services.json"),
+    val configFile: File = resolveDefaultConfigFile(),
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val json: Json = defaultJson
 ) : ConfigRepository {
@@ -41,6 +41,50 @@ class FileConfigRepository(
             prettyPrint = true
             ignoreUnknownKeys = true
             encodeDefaults = true
+        }
+
+        fun resolveDefaultConfigFile(): File {
+            // 1. System property or environment variable override
+            val customPath = System.getProperty("dashboard.config.path")
+                ?: System.getenv("DASHBOARD_CONFIG_PATH")
+            if (!customPath.isNullOrBlank()) {
+                return File(customPath)
+            }
+
+            // 2. Local directory (.config/services.json or config/services.json) for dev/portable mode
+            val localDotConfig = File(".config/services.json")
+            if (localDotConfig.exists()) return localDotConfig
+
+            val localConfig = File("config/services.json")
+            if (localConfig.exists()) return localConfig
+
+            // 3. User standard configuration directory (~/.config/dashboard/services.json)
+            val userHome = System.getProperty("user.home") ?: "."
+            val os = System.getProperty("os.name", "").lowercase()
+
+            val configDir = when {
+                os.contains("win") -> {
+                    val appData = System.getenv("APPDATA")
+                    if (!appData.isNullOrBlank()) {
+                        File(appData, "Dashboard")
+                    } else {
+                        File(userHome, "AppData/Roaming/Dashboard")
+                    }
+                }
+                os.contains("mac") -> {
+                    File(userHome, "Library/Application Support/Dashboard")
+                }
+                else -> {
+                    val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")
+                    if (!xdgConfigHome.isNullOrBlank()) {
+                        File(xdgConfigHome, "dashboard")
+                    } else {
+                        File(userHome, ".config/dashboard")
+                    }
+                }
+            }
+
+            return File(configDir, "services.json")
         }
 
         fun createDefaultConfig(): DashboardConfig {

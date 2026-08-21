@@ -272,4 +272,27 @@ class ConfigRepositoryTest {
             repository.loadConfig()
         }
     }
+
+    @Test
+    fun testResolveDefaultConfigFileWithSystemProperty() {
+        val customTestPath = File(tempDir, "custom-prop-services.json").absolutePath
+        val oldProp = System.getProperty("dashboard.config.path")
+        try {
+            System.setProperty("dashboard.config.path", customTestPath)
+            val resolved = FileConfigRepository.resolveDefaultConfigFile()
+            assertEquals(File(customTestPath).absolutePath, resolved.absolutePath)
+        } finally {
+            if (oldProp != null) {
+                System.setProperty("dashboard.config.path", oldProp)
+            } else {
+                System.clearProperty("dashboard.config.path")
+            }
+        }
+    }
+
+    @Test
+    fun testResolveDefaultConfigFileHasValidName() {
+        val resolved = FileConfigRepository.resolveDefaultConfigFile()
+        assertEquals("services.json", resolved.name)
+    }
 }
