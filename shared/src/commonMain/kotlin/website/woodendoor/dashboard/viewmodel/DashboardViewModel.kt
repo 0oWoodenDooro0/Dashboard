@@ -185,13 +185,16 @@ class DashboardViewModel(
         startLogStreamForService(selected)
     }
 
-    private fun startLogStreamForService(service: ServiceItem) {
+    private fun startLogStreamForService(service: ServiceItem, tail: Int = 100, clearSession: Boolean = true) {
         if (service.logSource is LogSource.None) return
 
         logStreamJob?.cancel()
+        if (clearSession) {
+            _state.update { it.copy(logSession = it.logSession.cleared()) }
+        }
         logStreamJob = scope.launch(defaultDispatcher, start = CoroutineStart.UNDISPATCHED) {
             try {
-                serviceRuntimeManager.streamLogs(service, tail = 100)
+                serviceRuntimeManager.streamLogs(service, tail = tail)
                     .catch { e ->
                         _state.update { current ->
                             current.copy(
@@ -298,7 +301,7 @@ class DashboardViewModel(
             try {
                 try {
                     serviceRuntimeManager.startService(service)
-                    startLogStreamForService(service)
+                    startLogStreamForService(service, tail = 0)
                     refreshHealthAndDocker()
                 } catch (e: CancellationException) {
                     throw e
@@ -339,7 +342,7 @@ class DashboardViewModel(
             try {
                 try {
                     serviceRuntimeManager.restartService(service)
-                    startLogStreamForService(service)
+                    startLogStreamForService(service, tail = 0)
                     refreshHealthAndDocker()
                 } catch (e: CancellationException) {
                     throw e

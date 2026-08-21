@@ -325,5 +325,84 @@ class ProcessManagerTest {
             assertTrue(logs.any { it.contains("pre-connected line 2") }, "Should capture line 2 when subscribed before start")
         }
     }
+
+    @Test
+    fun testStartProcessAfterStopClearsPreviousLogBuffer() = runTest {
+        withContext(Dispatchers.Default) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+            val cmd1 = if (isWindows) "echo run 1 output" else "echo 'run 1 output'"
+            val cmd2 = if (isWindows) "echo run 2 output" else "echo 'run 2 output'"
+
+            val serviceId = "restart-clear-buffer-service"
+
+            // First run
+            processManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd1
+            )
+
+            var attempts = 0
+            while (processManager.isRunning(serviceId) && attempts < 50) {
+                delay(50)
+                attempts++
+            }
+
+            val flow1 = processManager.streamLogs(serviceId = serviceId, tail = 10)
+            val logs1 = withTimeout(5000) {
+                flow1.toList()
+            }
+            assertTrue(logs1.any { it.contains("run 1 output") })
+
+            // Second run
+            processManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd2
+            )
+
+            attempts = 0
+            while (processManager.isRunning(serviceId) && attempts < 50) {
+                delay(50)
+                attempts++
+            }
+
+            val flow2 = processManager.streamLogs(serviceId = serviceId, tail = 10)
+            val logs2 = withTimeout(5000) {
+                flow2.toList()
+            }
+
+            assertTrue(logs2.any { it.contains("run 2 output") }, "Should contain run 2 output. Actual: $logs2")
+            assertFalse(logs2.any { it.contains("run 1 output") }, "Should NOT contain run 1 output from previous run. Actual: $logs2")
+        }
+    }
+
+    @Test
+    fun testStreamLogsWithTailZeroDoesNotEmitHistoricalLines() = runTest {
+        withContext(Dispatchers.Default) {
+            val isWindows = System.getProperty("os.name").lowercase().contains("win")
+            val cmd = if (isWindows) "echo historical line" else "echo 'historical line'"
+
+            val serviceId = "tail-zero-service"
+            processManager.startProcess(
+                serviceId = serviceId,
+                workingDir = tempDir.absolutePath,
+                command = cmd
+            )
+
+            var attempts = 0
+            while (processManager.isRunning(serviceId) && attempts < 50) {
+                delay(50)
+                attempts++
+            }
+
+            val flow = processManager.streamLogs(serviceId = serviceId, tail = 0)
+            val logs = withTimeout(5000) {
+                flow.toList()
+            }
+
+            assertTrue(logs.isEmpty(), "tail=0 should not emit any historical lines. Actual: $logs")
+        }
+    }
 }
 
