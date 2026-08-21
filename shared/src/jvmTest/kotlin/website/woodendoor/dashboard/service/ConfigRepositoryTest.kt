@@ -49,19 +49,35 @@ class ConfigRepositoryTest {
         // When loadConfig() is invoked
         val config = repository.loadConfig()
 
-        // Then config file is automatically generated on disk
+        // Then config file is automatically generated on disk with empty service groups
         assertTrue(configFile.exists(), "Config file should be created on disk")
-        assertTrue(config.groups.isNotEmpty(), "Default config should contain service groups")
+        assertTrue(config.groups.isEmpty(), "Default config should contain empty service groups")
         assertEquals(1, config.version)
         assertEquals(5, config.pollingIntervalSeconds)
+    }
 
-        // Verify default groups exist
-        val webGroup = config.groups.find { it.name == "Web Applications" }
-        assertNotNull(webGroup, "Default config should include 'Web Applications' group")
-        assertTrue(webGroup.services.isNotEmpty())
+    @Test
+    fun testAddServiceOnTopOfEmptyDefaultConfig() {
+        // Given a newly generated default config
+        val initialConfig = repository.loadConfig()
+        assertTrue(initialConfig.groups.isEmpty(), "Initial config must have empty groups")
 
-        val dbGroup = config.groups.find { it.name == "Databases & Cache" }
-        assertNotNull(dbGroup, "Default config should include 'Databases & Cache' group")
+        // When adding a service on top of the empty default configuration
+        val service = ServiceItem(
+            id = "frontend-dev",
+            name = "Frontend Web",
+            host = "127.0.0.1",
+            port = 3000
+        )
+        val updatedConfig = initialConfig.withServiceAdded(service, targetGroupIdOrName = "Web Applications")
+        repository.saveConfig(updatedConfig)
+
+        // Then reload config and verify group & service exist
+        val reloaded = repository.loadConfig()
+        assertEquals(1, reloaded.groups.size)
+        assertEquals("Web Applications", reloaded.groups.first().name)
+        assertEquals(1, reloaded.groups.first().services.size)
+        assertEquals("frontend-dev", reloaded.groups.first().services.first().id)
     }
 
     @Test
