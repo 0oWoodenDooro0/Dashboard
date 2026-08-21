@@ -323,12 +323,120 @@ class DashboardConfigDomainTest {
     }
 
     @Test
+    fun withServiceUpdated_whenTargetGroupIsSameGroupById_updatesServiceInSameGroup() {
+        val config = createSampleConfig()
+        val updatedService = ServiceItem(
+            id = "backend",
+            name = "Backend API v2",
+            port = 8080
+        )
+
+        val updated = config.withServiceUpdated(updatedService, targetGroupIdOrName = "web-apps")
+
+        val parentGroup = updated.findGroupForService("backend")
+        assertEquals("web-apps", parentGroup?.id)
+        assertEquals("Backend API v2", updated.findService("backend")?.name)
+    }
+
+    @Test
+    fun withServiceUpdated_whenTargetGroupIsSameGroupByCaseInsensitiveName_updatesServiceInSameGroup() {
+        val config = createSampleConfig()
+        val updatedService = ServiceItem(
+            id = "backend",
+            name = "Backend API v2",
+            port = 8080
+        )
+
+        val updated = config.withServiceUpdated(updatedService, targetGroupIdOrName = "Web Applications")
+
+        val parentGroup = updated.findGroupForService("backend")
+        assertEquals("web-apps", parentGroup?.id)
+        assertEquals("Backend API v2", updated.findService("backend")?.name)
+    }
+
+    @Test
+    fun withServiceUpdated_whenMovingToExistingGroupById_movesServiceToTargetGroup() {
+        val config = createSampleConfig()
+        val updatedService = ServiceItem(
+            id = "backend",
+            name = "Backend API Moved",
+            port = 8000
+        )
+
+        val updated = config.withServiceUpdated(updatedService, targetGroupIdOrName = "databases")
+
+        val oldGroup = updated.findGroup("web-apps")
+        assertNotNull(oldGroup)
+        assertEquals(listOf("frontend"), oldGroup.services.map { it.id })
+
+        val targetGroup = updated.findGroup("databases")
+        assertNotNull(targetGroup)
+        assertEquals(listOf("postgres", "backend"), targetGroup.services.map { it.id })
+
+        val service = updated.findService("backend")
+        assertNotNull(service)
+        assertEquals("Backend API Moved", service.name)
+        assertEquals("databases", updated.findGroupForService("backend")?.id)
+    }
+
+    @Test
+    fun withServiceUpdated_whenMovingToExistingGroupByCaseInsensitiveName_movesServiceToTargetGroup() {
+        val config = createSampleConfig()
+        val updatedService = ServiceItem(
+            id = "frontend",
+            name = "Frontend App Moved",
+            port = 3000
+        )
+
+        val updated = config.withServiceUpdated(updatedService, targetGroupIdOrName = "databases & cache")
+
+        val oldGroup = updated.findGroup("web-apps")
+        assertNotNull(oldGroup)
+        assertEquals(listOf("backend"), oldGroup.services.map { it.id })
+
+        val targetGroup = updated.findGroup("databases")
+        assertNotNull(targetGroup)
+        assertEquals(listOf("postgres", "frontend"), targetGroup.services.map { it.id })
+
+        assertEquals("databases", updated.findGroupForService("frontend")?.id)
+    }
+
+    @Test
+    fun withServiceUpdated_whenTargetGroupDoesNotExist_createsNewGroupAndMovesService() {
+        val config = createSampleConfig()
+        val updatedService = ServiceItem(
+            id = "frontend",
+            name = "Frontend Worker",
+            port = 3000
+        )
+
+        val updated = config.withServiceUpdated(updatedService, targetGroupIdOrName = "Background Workers")
+
+        assertEquals(3, updated.groups.size)
+
+        val oldGroup = updated.findGroup("web-apps")
+        assertNotNull(oldGroup)
+        assertEquals(listOf("backend"), oldGroup.services.map { it.id })
+
+        val newGroup = updated.findGroup("Background Workers")
+        assertNotNull(newGroup)
+        assertEquals("Background Workers", newGroup.id)
+        assertEquals("Background Workers", newGroup.name)
+        assertEquals(listOf("frontend"), newGroup.services.map { it.id })
+
+        assertEquals("Background Workers", updated.findGroupForService("frontend")?.id)
+    }
+
+    @Test
     fun withServiceUpdated_whenServiceDoesNotExist_returnsIdenticalConfig() {
         val config = createSampleConfig()
         val unknownService = ServiceItem(id = "unknown", name = "Unknown Service")
 
         val updated = config.withServiceUpdated(unknownService)
         assertEquals(config, updated)
+
+        val updatedWithGroup = config.withServiceUpdated(unknownService, targetGroupIdOrName = "databases")
+        assertEquals(config, updatedWithGroup)
     }
 
     @Test

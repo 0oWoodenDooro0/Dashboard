@@ -186,22 +186,63 @@ data class DashboardConfig(
     }
 
     /**
-     * Returns a new [DashboardConfig] with the existing service updated in-place.
+     * Returns a new [DashboardConfig] with the existing service updated in-place or moved to the target group.
      */
-    fun withServiceUpdated(service: ServiceItem): DashboardConfig {
-        var found = false
-        val updatedGroups = groups.map { group ->
-            val updatedServices = group.services.map { existing ->
-                if (existing.id == service.id) {
-                    found = true
-                    service
+    fun withServiceUpdated(service: ServiceItem, targetGroupIdOrName: String? = null): DashboardConfig {
+        val currentGroup = findGroupForService(service.id) ?: return this
+        val targetGroup = targetGroupIdOrName?.let { findGroup(it) }
+
+        val isSameGroup = targetGroupIdOrName == null ||
+            (targetGroup != null && targetGroup.id == currentGroup.id) ||
+            (targetGroup == null && (currentGroup.id == targetGroupIdOrName || currentGroup.name.equals(targetGroupIdOrName, ignoreCase = true)))
+
+        if (isSameGroup) {
+            val updatedGroups = groups.map { group ->
+                if (group.id == currentGroup.id) {
+                    val updatedServices = group.services.map { existing ->
+                        if (existing.id == service.id) service else existing
+                    }
+                    group.copy(services = updatedServices)
                 } else {
-                    existing
+                    group
                 }
             }
-            group.copy(services = updatedServices)
+            return copy(groups = updatedGroups)
         }
-        return if (found) copy(groups = updatedGroups) else this
+
+        if (targetGroup != null) {
+            val updatedGroups = groups.map { group ->
+                when (group.id) {
+                    currentGroup.id -> group.copy(services = group.services.filterNot { it.id == service.id })
+                    targetGroup.id -> {
+                        val existingIndex = group.services.indexOfFirst { it.id == service.id }
+                        val updatedServices = if (existingIndex >= 0) {
+                            group.services.toMutableList().apply { set(existingIndex, service) }
+                        } else {
+                            group.services + service
+                        }
+                        group.copy(services = updatedServices)
+                    }
+                    else -> group
+                }
+            }
+            return copy(groups = updatedGroups)
+        }
+
+        val newGroupId = targetGroupIdOrName
+        val newGroupName = targetGroupIdOrName
+        val updatedGroups = groups.map { group ->
+            if (group.id == currentGroup.id) {
+                group.copy(services = group.services.filterNot { it.id == service.id })
+            } else {
+                group
+            }
+        } + ServiceGroup(
+            id = newGroupId,
+            name = newGroupName,
+            services = listOf(service)
+        )
+        return copy(groups = updatedGroups)
     }
 
     /**

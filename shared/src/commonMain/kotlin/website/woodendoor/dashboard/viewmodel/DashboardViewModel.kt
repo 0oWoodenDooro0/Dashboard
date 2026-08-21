@@ -223,13 +223,13 @@ class DashboardViewModel(
         saveConfigInternal(updatedConfig)
     }
 
-    fun updateService(service: ServiceItem) {
+    fun updateService(service: ServiceItem, groupId: String? = null) {
         val currentConfig = _state.value.config
         val currentSelected = _state.value.selectedService
         val isSelected = _state.value.selectedServiceId == service.id
         val logSourceChanged = isSelected && currentSelected?.logSource != service.logSource
 
-        val updatedConfig = currentConfig.withServiceUpdated(service)
+        val updatedConfig = currentConfig.withServiceUpdated(service, targetGroupIdOrName = groupId)
         saveConfigInternal(updatedConfig)
 
         if (logSourceChanged) {
