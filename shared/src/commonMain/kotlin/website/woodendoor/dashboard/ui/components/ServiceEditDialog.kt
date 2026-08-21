@@ -172,6 +172,17 @@ fun ServiceEditDialog(
                                 onValueChange = { formState = formState.copy(commandStopScript = it) },
                                 placeholder = "npm run stop"
                             )
+
+                            FormField(
+                                label = "Environment Variables (Optional)",
+                                value = formState.commandEnvironment,
+                                onValueChange = { formState = formState.copy(commandEnvironment = it) },
+                                placeholder = "PORT=8080\nNODE_ENV=development",
+                                errorMessage = errors["commandEnvironment"],
+                                singleLine = false,
+                                minLines = 3,
+                                maxLines = 5
+                            )
                         }
                         LogSourceType.DOCKER -> {
                             FormField(
@@ -329,6 +340,9 @@ fun FormField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     errorMessage: String? = null,
+    singleLine: Boolean = true,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    minLines: Int = 1,
     modifier: Modifier = Modifier
 ) {
     OutlinedTextField(
@@ -336,7 +350,9 @@ fun FormField(
         onValueChange = onValueChange,
         label = { Text(label) },
         placeholder = { Text(placeholder) },
-        singleLine = true,
+        singleLine = singleLine,
+        maxLines = maxLines,
+        minLines = minLines,
         isError = errorMessage != null,
         supportingText = if (errorMessage != null) {
             {

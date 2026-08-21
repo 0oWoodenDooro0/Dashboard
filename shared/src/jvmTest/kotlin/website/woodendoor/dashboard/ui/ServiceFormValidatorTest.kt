@@ -521,5 +521,150 @@ class ServiceFormValidatorTest {
         assertIs<FormValidationResult.Success>(result)
         assertEquals("custom-order-svc", result.serviceItem.id)
     }
+
+    @Test
+    fun `validate with valid Command inputs and environment variables parses environment map correctly`() {
+        val formState = ServiceFormState(
+            name = "Command Service with Env",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "npm run start",
+            commandEnvironment = "PORT=8080\nNODE_ENV=production\nDEBUG=true"
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            LogSource.Command(
+                workingDir = "/home/user/app",
+                startCommand = "npm run start",
+                stopCommand = null,
+                environment = mapOf(
+                    "PORT" to "8080",
+                    "NODE_ENV" to "production",
+                    "DEBUG" to "true"
+                )
+            ),
+            result.serviceItem.logSource
+        )
+    }
+
+    @Test
+    fun `validate with Command environment handles comments and blank lines gracefully`() {
+        val formState = ServiceFormState(
+            name = "Command Service with Comments",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "python main.py",
+            commandEnvironment = """
+                # Server configuration
+                HOST=0.0.0.0
+
+                # Port configuration
+                PORT=3000
+                   # Indented comment
+            """.trimIndent()
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            mapOf("HOST" to "0.0.0.0", "PORT" to "3000"),
+            (result.serviceItem.logSource as LogSource.Command).environment
+        )
+    }
+
+    @Test
+    fun `validate with Command environment preserves values containing equals signs`() {
+        val formState = ServiceFormState(
+            name = "Command Service with Complex Values",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "./run.sh",
+            commandEnvironment = """
+                DATABASE_URL=postgres://user:pass@localhost:5432/mydb?sslmode=disable
+                GREETING = Hello = World = !
+                EMPTY_VAL =
+            """.trimIndent()
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Success>(result)
+        assertEquals(
+            mapOf(
+                "DATABASE_URL" to "postgres://user:pass@localhost:5432/mydb?sslmode=disable",
+                "GREETING" to "Hello = World = !",
+                "EMPTY_VAL" to ""
+            ),
+            (result.serviceItem.logSource as LogSource.Command).environment
+        )
+    }
+
+    @Test
+    fun `validate fails when Command environment variable lacks equals sign`() {
+        val formState = ServiceFormState(
+            name = "Command Service Invalid Env",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "npm start",
+            commandEnvironment = "PORT=8080\nINVALID_LINE_WITHOUT_EQUALS"
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("commandEnvironment"))
+    }
+
+    @Test
+    fun `validate fails when Command environment variable has empty key`() {
+        val formState = ServiceFormState(
+            name = "Command Service Empty Key Env",
+            logSourceType = LogSourceType.COMMAND,
+            commandWorkingDir = "/home/user/app",
+            commandStartScript = "npm start",
+            commandEnvironment = " =value_without_key"
+        )
+
+        val result = ServiceFormValidator.validate(formState)
+        assertIs<FormValidationResult.Error>(result)
+        assertTrue(result.errors.containsKey("commandEnvironment"))
+    }
+
+    @Test
+    fun `fromServiceItem correctly maps Command LogSource with environment variables to multiline string`() {
+        val item = ServiceItem(
+            id = "cmd-env-item",
+            name = "Env Command Service",
+            logSource = LogSource.Command(
+                workingDir = "/apps/srv",
+                startCommand = "npm start",
+                stopCommand = null,
+                environment = mapOf("PORT" to "8080", "NODE_ENV" to "production")
+            )
+        )
+
+        val formState = ServiceFormState.fromServiceItem(item, "Default Group")
+        assertEquals(LogSourceType.COMMAND, formState.logSourceType)
+        assertEquals("PORT=8080\nNODE_ENV=production", formState.commandEnvironment)
+    }
+
+    @Test
+    fun `fromServiceItem correctly maps Command LogSource with empty environment to empty string`() {
+        val item = ServiceItem(
+            id = "cmd-empty-env-item",
+            name = "Empty Env Command Service",
+            logSource = LogSource.Command(
+                workingDir = "/apps/srv",
+                startCommand = "npm start",
+                stopCommand = null,
+                environment = emptyMap()
+            )
+        )
+
+        val formState = ServiceFormState.fromServiceItem(item, "Default Group")
+        assertEquals(LogSourceType.COMMAND, formState.logSourceType)
+        assertEquals("", formState.commandEnvironment)
+    }
 }
+
 
