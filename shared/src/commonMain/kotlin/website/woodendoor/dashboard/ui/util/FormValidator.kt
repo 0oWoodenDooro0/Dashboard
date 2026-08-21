@@ -29,7 +29,8 @@ data class ServiceFormState(
     val composeFileName: String = "",
     val commandWorkingDir: String = "",
     val commandStartScript: String = "",
-    val commandStopScript: String = ""
+    val commandStopScript: String = "",
+    val commandEnvironment: String = ""
 ) {
     companion object {
         fun fromServiceItem(item: ServiceItem, groupName: String = "Default"): ServiceFormState {
@@ -75,7 +76,10 @@ data class ServiceFormState(
                     logSourceType = LogSourceType.COMMAND,
                     commandWorkingDir = src.workingDir,
                     commandStartScript = src.startCommand,
-                    commandStopScript = src.stopCommand ?: ""
+                    commandStopScript = src.stopCommand ?: "",
+                    commandEnvironment = if (src.environment.isNotEmpty()) {
+                        src.environment.entries.joinToString("\n") { "${it.key}=${it.value}" }
+                    } else ""
                 )
                 is LogSource.LocalFile -> ServiceFormState(
                     id = item.id,
@@ -189,11 +193,34 @@ object ServiceFormValidator {
                     errors["commandStartScript"] = "Start command cannot be empty for Directory Command log source"
                 }
 
-                if (workingDir.isNotEmpty() && startCommand.isNotEmpty()) {
+                val envMap = mutableMapOf<String, String>()
+                if (state.commandEnvironment.isNotBlank()) {
+                    for (line in state.commandEnvironment.lines()) {
+                        val trimmed = line.trim()
+                        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                            continue
+                        }
+                        val equalsIdx = trimmed.indexOf('=')
+                        if (equalsIdx == -1) {
+                            errors["commandEnvironment"] = "Invalid environment variable format: '$trimmed'. Expected KEY=VALUE"
+                            break
+                        }
+                        val key = trimmed.substring(0, equalsIdx).trim()
+                        val value = trimmed.substring(equalsIdx + 1).trim()
+                        if (key.isEmpty()) {
+                            errors["commandEnvironment"] = "Environment variable key cannot be empty in '$trimmed'"
+                            break
+                        }
+                        envMap[key] = value
+                    }
+                }
+
+                if (workingDir.isNotEmpty() && startCommand.isNotEmpty() && !errors.containsKey("commandEnvironment")) {
                     LogSource.Command(
                         workingDir = workingDir,
                         startCommand = startCommand,
-                        stopCommand = stopCommand
+                        stopCommand = stopCommand,
+                        environment = envMap
                     )
                 } else {
                     LogSource.None
