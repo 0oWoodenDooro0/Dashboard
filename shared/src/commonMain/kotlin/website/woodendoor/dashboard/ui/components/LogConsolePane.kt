@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -152,16 +154,18 @@ fun LogConsolePane(
                         subtitle = "No lines match the search filter '$searchQuery'."
                     )
                 } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        itemsIndexed(filteredLogs) { index, logLine ->
-                            LogLineItem(
-                                lineNumber = index + 1,
-                                lineContent = logLine,
-                                searchQuery = searchQuery
-                            )
+                    SelectionContainer {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            itemsIndexed(filteredLogs) { index, logLine ->
+                                LogLineItem(
+                                    lineNumber = index + 1,
+                                    lineContent = logLine,
+                                    searchQuery = searchQuery
+                                )
+                            }
                         }
                     }
                 }
@@ -380,19 +384,21 @@ fun LogLineItem(
             .padding(vertical = 1.dp),
         verticalAlignment = Alignment.Top
     ) {
-        // Line number gutter
-        Text(
-            text = lineNumber.toString(),
-            fontFamily = MonospaceFontFamily,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            textAlign = TextAlign.End,
-            modifier = Modifier
-                .width(44.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(horizontal = 6.dp)
-        )
+        // Line number gutter (excluded from cursor text selection)
+        DisableSelection {
+            Text(
+                text = lineNumber.toString(),
+                fontFamily = MonospaceFontFamily,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .width(44.dp)
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(horizontal = 6.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.width(8.dp))
 
