@@ -50,7 +50,7 @@ class DefaultProcessManager(
 
         @Synchronized
         fun getTail(tail: Int): Pair<List<String>, Long> {
-            if (tail <= 0) return Pair(emptyList(), 0L)
+            if (tail <= 0) return Pair(emptyList(), totalLines)
             val count = minOf(tail, buffer.size)
             val start = buffer.size - count
             val snapshot = ArrayList<String>(count)
@@ -145,7 +145,7 @@ class DefaultProcessManager(
                 throw e
             }
 
-            val logBuffer = historyLogBuffers.computeIfAbsent(serviceId) { LogBuffer(maxLogBufferSize) }
+            val logBuffer = LogBuffer(maxLogBufferSize).also { historyLogBuffers[serviceId] = it }
             val existingFlow = historyLogFlows[serviceId]
             val logFlow = if (existingFlow != null && !existingFlow.replayCache.any { it.isEndOfStream }) {
                 existingFlow

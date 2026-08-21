@@ -166,7 +166,12 @@ class DashboardViewModelTest {
             return targetStates[target] ?: ContainerState.Running(status = "Up 2 hours")
         }
 
-        override fun streamLogs(target: LogSource, tail: Int): Flow<String> = getOrCreateFlow(target)
+        var lastRequestedStreamTail: Int? = null
+
+        override fun streamLogs(target: LogSource, tail: Int): Flow<String> {
+            lastRequestedStreamTail = tail
+            return getOrCreateFlow(target)
+        }
 
         override suspend fun start(target: LogSource) {
             if (shouldThrowOnStart) throw RuntimeException("Failed to start container $target")
@@ -195,6 +200,7 @@ class DashboardViewModelTest {
         val restartProcessCalls = mutableListOf<Triple<String, String, String>>()
         val flowMap = mutableMapOf<String, MutableSharedFlow<String>>()
         var lastRequestedStreamServiceId: String? = null
+        var lastRequestedStreamTail: Int? = null
         var onStartProcess: (suspend (String) -> Unit)? = null
         var onStopProcess: (suspend (String) -> Unit)? = null
         var onRestartProcess: (suspend (String) -> Unit)? = null
@@ -236,6 +242,7 @@ class DashboardViewModelTest {
 
         override fun streamLogs(serviceId: String, tail: Int): Flow<String> {
             lastRequestedStreamServiceId = serviceId
+            lastRequestedStreamTail = tail
             return getOrCreateFlow(serviceId)
         }
     }
@@ -1071,6 +1078,106 @@ class DashboardViewModelTest {
         runCurrent()
 
         assertTrue(viewModel.state.value.logs.contains("new process output after start"))
+    }
+
+    @Test
+    fun startService_whenAlreadySelected_clearsPreviousLogSessionAndPreventsDuplicateLogReplay() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        // Pre-select the service
+        viewModel.selectService("web-1")
+        runCurrent()
+        assertEquals("web-1", viewModel.state.value.selectedServiceId)
+
+        val flow = getOrCreateLogFlow(sampleService1)
+        flow.emit("initial log line 1")
+        flow.emit("initial log line 2")
+        runCurrent()
+
+        assertEquals(listOf("initial log line 1", "initial log line 2"), viewModel.state.value.logs)
+
+        // Start service while already selected
+        viewModel.startService(sampleService1)
+        runCurrent()
+
+        // New log stream replays log lines and emits a new line
+        flow.emit("initial log line 1")
+        flow.emit("initial log line 2")
+        flow.emit("new log line 3")
+        runCurrent()
+
+        // Ensure logs are not duplicated
+        assertEquals(
+            listOf("initial log line 1", "initial log line 2", "new log line 3"),
+            viewModel.state.value.logs,
+            "Starting an already-selected service should clear the previous log session to prevent duplicate log replay"
+        )
+    }
+
+    @Test
+    fun restartService_whenAlreadySelected_clearsPreviousLogSessionAndPreventsDuplicateLogReplay() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        // Pre-select the service
+        viewModel.selectService("web-1")
+        runCurrent()
+        assertEquals("web-1", viewModel.state.value.selectedServiceId)
+
+        val flow = getOrCreateLogFlow(sampleService1)
+        flow.emit("old log before restart 1")
+        flow.emit("old log before restart 2")
+        runCurrent()
+
+        assertEquals(listOf("old log before restart 1", "old log before restart 2"), viewModel.state.value.logs)
+
+        // Restart service while already selected
+        viewModel.restartService(sampleService1)
+        runCurrent()
+
+        // Stream replays logs from container and adds new log
+        flow.emit("replayed log 1")
+        flow.emit("replayed log 2")
+        flow.emit("new log after restart")
+        runCurrent()
+
+        // Ensure old logs before restart are cleared and not duplicated
+        assertEquals(
+            listOf("replayed log 1", "replayed log 2", "new log after restart"),
+            viewModel.state.value.logs,
+            "Restarting an already-selected service should clear previous logSession and stream fresh logs"
+        )
+    }
+
+    @Test
+    fun startAndRestartService_requestsTailZero_whileSelectServiceRequestsTailHundred() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val viewModel = createViewModel(this, dispatcher)
+        runCurrent()
+
+        val cmdConfig = sampleConfig.copy(
+            groups = listOf(sampleGroup.copy(services = sampleGroup.services + sampleService5))
+        )
+        fakeConfigRepository.saveConfig(cmdConfig)
+        runCurrent()
+
+        // selectService requests tail = 100
+        viewModel.selectService("cmd-1")
+        runCurrent()
+        assertEquals(100, fakeProcessManager.lastRequestedStreamTail)
+
+        // startService requests tail = 0
+        viewModel.startService(sampleService5)
+        runCurrent()
+        assertEquals(0, fakeProcessManager.lastRequestedStreamTail)
+
+        // restartService requests tail = 0
+        viewModel.restartService(sampleService5)
+        runCurrent()
+        assertEquals(0, fakeProcessManager.lastRequestedStreamTail)
     }
 
     @Test
