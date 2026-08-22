@@ -32,7 +32,7 @@ import website.woodendoor.dashboard.ui.theme.StatusHealthyBg
 import website.woodendoor.dashboard.ui.theme.StatusNeutral
 import website.woodendoor.dashboard.ui.theme.StatusNeutralBg
 import website.woodendoor.dashboard.ui.theme.StatusUnreachable
-import website.woodendoor.dashboard.ui.util.SummaryMetrics
+import website.woodendoor.dashboard.model.SummaryMetrics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -10,7 +10,7 @@ import website.woodendoor.dashboard.model.PortHealth
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.model.badgeLabel
 import website.woodendoor.dashboard.ui.components.describeLogSource
-import website.woodendoor.dashboard.ui.util.SummaryMetrics
+import website.woodendoor.dashboard.model.SummaryMetrics
 
 class StaticBadgesAndChipsTest {
 
