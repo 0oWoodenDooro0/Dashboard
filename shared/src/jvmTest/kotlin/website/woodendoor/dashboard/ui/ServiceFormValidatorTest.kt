@@ -5,12 +5,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import website.woodendoor.dashboard.model.DashboardConfig
 import website.woodendoor.dashboard.model.LogSource
 import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.ui.util.FormValidationResult
 import website.woodendoor.dashboard.ui.util.LogSourceType
 import website.woodendoor.dashboard.ui.util.ServiceFormState
-import website.woodendoor.dashboard.ui.util.ServiceFormValidator
 
 class ServiceFormValidatorTest {
 
@@ -50,7 +50,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "test-container"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
 
         val service = result.serviceItem
@@ -75,7 +75,7 @@ class ServiceFormValidatorTest {
             commandStartScript = " npm run dev "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             LogSource.Command(
@@ -97,7 +97,7 @@ class ServiceFormValidatorTest {
             commandStopScript = " ./gradlew --stop "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             LogSource.Command(
@@ -118,7 +118,7 @@ class ServiceFormValidatorTest {
             composeServiceName = " backend "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             LogSource.DockerCompose(
@@ -140,7 +140,7 @@ class ServiceFormValidatorTest {
             composeFileName = " docker-compose.prod.yml "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             LogSource.DockerCompose(
@@ -160,7 +160,7 @@ class ServiceFormValidatorTest {
             localFilePath = " /var/log/app.log "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(LogSource.LocalFile("/var/log/app.log"), result.serviceItem.logSource)
     }
@@ -176,7 +176,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "my-srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals("my-amazing-service-2026", result.serviceItem.id)
     }
@@ -190,7 +190,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "my-srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("name"))
         assertEquals("Service name cannot be empty", result.errors["name"])
@@ -205,7 +205,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals("127.0.0.1", result.serviceItem.host)
     }
@@ -219,7 +219,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertNull(result.serviceItem.port)
     }
@@ -233,7 +233,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("port"))
         assertEquals("Port must be a valid number (1-65535)", result.errors["port"])
@@ -245,9 +245,9 @@ class ServiceFormValidatorTest {
         val zeroPortState = ServiceFormState(name = "Zero Port", port = "0", logSourceType = LogSourceType.DOCKER, dockerContainerName = "s")
         val excessivePortState = ServiceFormState(name = "Too Large Port", port = "70000", logSourceType = LogSourceType.DOCKER, dockerContainerName = "s")
 
-        val result1 = ServiceFormValidator.validate(negativePortState)
-        val result2 = ServiceFormValidator.validate(zeroPortState)
-        val result3 = ServiceFormValidator.validate(excessivePortState)
+        val result1 = negativePortState.validate()
+        val result2 = zeroPortState.validate()
+        val result3 = excessivePortState.validate()
 
         assertIs<FormValidationResult.Error>(result1)
         assertIs<FormValidationResult.Error>(result2)
@@ -262,7 +262,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "   "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("dockerContainerName"))
         assertEquals("Container name cannot be empty for Docker log source", result.errors["dockerContainerName"])
@@ -277,7 +277,7 @@ class ServiceFormValidatorTest {
             commandStartScript = "python main.py"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("commandWorkingDir"))
         assertEquals("Working directory cannot be empty for Directory Command log source", result.errors["commandWorkingDir"])
@@ -292,7 +292,7 @@ class ServiceFormValidatorTest {
             commandStartScript = "   "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("commandStartScript"))
         assertEquals("Start command cannot be empty for Directory Command log source", result.errors["commandStartScript"])
@@ -307,7 +307,7 @@ class ServiceFormValidatorTest {
             composeServiceName = "api"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("composeProjectDir"))
         assertEquals("Project folder/directory cannot be empty for Docker Compose log source", result.errors["composeProjectDir"])
@@ -322,7 +322,7 @@ class ServiceFormValidatorTest {
             composeServiceName = "   "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("composeServiceName"))
         assertEquals("Service name cannot be empty for Docker Compose log source", result.errors["composeServiceName"])
@@ -336,7 +336,7 @@ class ServiceFormValidatorTest {
             localFilePath = "   "
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("localFilePath"))
         assertEquals("File path cannot be empty for Local File log source", result.errors["localFilePath"])
@@ -351,7 +351,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "redis-1"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(listOf("redis", "cache", "in-memory"), result.serviceItem.tags)
     }
@@ -366,7 +366,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "srv"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertNull(result.serviceItem.openUrl)
         assertNull(result.serviceItem.healthUrl)
@@ -466,7 +466,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "c3"
         )
 
-        val result = ServiceFormValidator.validate(formState, existingServices = existing)
+        val result = formState.validate(existingServices = existing)
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("name"))
         assertEquals("A service with this name already exists", result.errors["name"])
@@ -484,7 +484,7 @@ class ServiceFormValidatorTest {
             dockerContainerName = "c1"
         )
 
-        val result = ServiceFormValidator.validate(formState, existingServices = existing, currentServiceId = "srv-1")
+        val result = formState.validate(existingServices = existing, currentServiceId = "srv-1")
         assertIs<FormValidationResult.Success>(result)
         assertEquals("My Service", result.serviceItem.name)
     }
@@ -492,7 +492,7 @@ class ServiceFormValidatorTest {
     @Test
     fun `generateSlug produces unique ids when duplicates exist`() {
         val existingIds = setOf("test", "test-2", "test-3")
-        val uniqueSlug = ServiceFormValidator.generateSlug("Test", existingIds)
+        val uniqueSlug = DashboardConfig.generateSlug("Test", existingIds)
         assertEquals("test-4", uniqueSlug)
     }
 
@@ -504,7 +504,7 @@ class ServiceFormValidatorTest {
             logSourceType = LogSourceType.DOCKER,
             dockerContainerName = "order-api"
         )
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals("order-service-api", result.serviceItem.id)
     }
@@ -517,7 +517,7 @@ class ServiceFormValidatorTest {
             logSourceType = LogSourceType.DOCKER,
             dockerContainerName = "order-api"
         )
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals("custom-order-svc", result.serviceItem.id)
     }
@@ -532,7 +532,7 @@ class ServiceFormValidatorTest {
             commandEnvironment = "PORT=8080\nNODE_ENV=production\nDEBUG=true"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             LogSource.Command(
@@ -566,7 +566,7 @@ class ServiceFormValidatorTest {
             """.trimIndent()
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             mapOf("HOST" to "0.0.0.0", "PORT" to "3000"),
@@ -588,7 +588,7 @@ class ServiceFormValidatorTest {
             """.trimIndent()
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Success>(result)
         assertEquals(
             mapOf(
@@ -610,7 +610,7 @@ class ServiceFormValidatorTest {
             commandEnvironment = "PORT=8080\nINVALID_LINE_WITHOUT_EQUALS"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("commandEnvironment"))
     }
@@ -625,7 +625,7 @@ class ServiceFormValidatorTest {
             commandEnvironment = " =value_without_key"
         )
 
-        val result = ServiceFormValidator.validate(formState)
+        val result = formState.validate()
         assertIs<FormValidationResult.Error>(result)
         assertTrue(result.errors.containsKey("commandEnvironment"))
     }

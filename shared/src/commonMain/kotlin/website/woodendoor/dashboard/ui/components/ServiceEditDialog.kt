@@ -38,7 +38,6 @@ import website.woodendoor.dashboard.model.ServiceItem
 import website.woodendoor.dashboard.ui.util.FormValidationResult
 import website.woodendoor.dashboard.ui.util.LogSourceType
 import website.woodendoor.dashboard.ui.util.ServiceFormState
-import website.woodendoor.dashboard.ui.util.ServiceFormValidator
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -292,7 +291,7 @@ fun ServiceEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    when (val result = ServiceFormValidator.validate(formState, existingServices = existingServices, currentServiceId = initialService?.id)) {
+                    when (val result = formState.validate(existingServices = existingServices, currentServiceId = initialService?.id)) {
                         is FormValidationResult.Success -> {
                             errors = emptyMap()
                             onSave(result.serviceItem, result.groupName)

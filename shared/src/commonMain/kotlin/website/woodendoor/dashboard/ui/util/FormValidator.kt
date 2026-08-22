@@ -32,6 +32,163 @@ data class ServiceFormState(
     val commandStopScript: String = "",
     val commandEnvironment: String = ""
 ) {
+    fun validate(
+        existingServices: List<ServiceItem> = emptyList(),
+        currentServiceId: String? = null
+    ): FormValidationResult {
+        val errors = mutableMapOf<String, String>()
+
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) {
+            errors["name"] = "Service name cannot be empty"
+        } else {
+            val isDuplicateName = existingServices.any { service ->
+                service.id != currentServiceId && service.name.equals(trimmedName, ignoreCase = true)
+            }
+            if (isDuplicateName) {
+                errors["name"] = "A service with this name already exists"
+            }
+        }
+
+        val parsedPort = if (port.isNotBlank()) {
+            val portNum = port.trim().toIntOrNull()
+            if (portNum == null || portNum !in 1..65535) {
+                errors["port"] = "Port must be a valid number (1-65535)"
+                null
+            } else {
+                portNum
+            }
+        } else {
+            null
+        }
+
+        val logSource = when (logSourceType) {
+            LogSourceType.DOCKER -> {
+                val containerName = dockerContainerName.trim()
+                if (containerName.isEmpty()) {
+                    errors["dockerContainerName"] = "Container name cannot be empty for Docker log source"
+                    LogSource.None
+                } else {
+                    LogSource.Docker(containerName)
+                }
+            }
+            LogSourceType.DOCKER_COMPOSE -> {
+                val projectDir = composeProjectDir.trim()
+                val serviceName = composeServiceName.trim()
+                val composeFile = composeFileName.trim().ifEmpty { null }
+
+                if (projectDir.isEmpty()) {
+                    errors["composeProjectDir"] = "Project folder/directory cannot be empty for Docker Compose log source"
+                }
+                if (serviceName.isEmpty()) {
+                    errors["composeServiceName"] = "Service name cannot be empty for Docker Compose log source"
+                }
+
+                if (projectDir.isNotEmpty() && serviceName.isNotEmpty()) {
+                    LogSource.DockerCompose(
+                        projectDir = projectDir,
+                        serviceName = serviceName,
+                        composeFile = composeFile
+                    )
+                } else {
+                    LogSource.None
+                }
+            }
+            LogSourceType.COMMAND -> {
+                val workingDir = commandWorkingDir.trim()
+                val startCommand = commandStartScript.trim()
+                val stopCommand = commandStopScript.trim().ifEmpty { null }
+
+                if (workingDir.isEmpty()) {
+                    errors["commandWorkingDir"] = "Working directory cannot be empty for Directory Command log source"
+                }
+                if (startCommand.isEmpty()) {
+                    errors["commandStartScript"] = "Start command cannot be empty for Directory Command log source"
+                }
+
+                val envMap = mutableMapOf<String, String>()
+                if (commandEnvironment.isNotBlank()) {
+                    for (line in commandEnvironment.lines()) {
+                        val trimmed = line.trim()
+                        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                            continue
+                        }
+                        val equalsIdx = trimmed.indexOf('=')
+                        if (equalsIdx == -1) {
+                            errors["commandEnvironment"] = "Invalid environment variable format: '$trimmed'. Expected KEY=VALUE"
+                            break
+                        }
+                        val key = trimmed.substring(0, equalsIdx).trim()
+                        val value = trimmed.substring(equalsIdx + 1).trim()
+                        if (key.isEmpty()) {
+                            errors["commandEnvironment"] = "Environment variable key cannot be empty in '$trimmed'"
+                            break
+                        }
+                        envMap[key] = value
+                    }
+                }
+
+                if (workingDir.isNotEmpty() && startCommand.isNotEmpty() && !errors.containsKey("commandEnvironment")) {
+                    LogSource.Command(
+                        workingDir = workingDir,
+                        startCommand = startCommand,
+                        stopCommand = stopCommand,
+                        environment = envMap
+                    )
+                } else {
+                    LogSource.None
+                }
+            }
+            LogSourceType.LOCAL_FILE -> {
+                val filePath = localFilePath.trim()
+                if (filePath.isEmpty()) {
+                    errors["localFilePath"] = "File path cannot be empty for Local File log source"
+                    LogSource.None
+                } else {
+                    LogSource.LocalFile(filePath)
+                }
+            }
+        }
+
+        if (errors.isNotEmpty()) {
+            return FormValidationResult.Error(errors)
+        }
+
+        val existingIds = existingServices.filter { it.id != currentServiceId }.map { it.id }.toSet()
+        val effectiveId = if (id.isNotBlank()) {
+            id.trim()
+        } else {
+            DashboardConfig.generateSlug(trimmedName, existingIds)
+        }
+
+        val effectiveHost = if (host.isNotBlank()) host.trim() else "127.0.0.1"
+        val effectiveGroup = if (groupName.isNotBlank()) groupName.trim() else "Default"
+        val effectiveOpenUrl = openUrl.trim().ifEmpty { null }
+        val effectiveHealthUrl = healthUrl.trim().ifEmpty { null }
+        val effectiveDescription = description.trim().ifEmpty { null }
+
+        val tagsList = tags.split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        val serviceItem = ServiceItem(
+            id = effectiveId,
+            name = trimmedName,
+            host = effectiveHost,
+            port = parsedPort,
+            openUrl = effectiveOpenUrl,
+            healthUrl = effectiveHealthUrl,
+            logSource = logSource,
+            description = effectiveDescription,
+            tags = tagsList
+        )
+
+        return FormValidationResult.Success(
+            serviceItem = serviceItem,
+            groupName = effectiveGroup
+        )
+    }
+
     companion object {
         fun fromServiceItem(item: ServiceItem, groupName: String = "Default"): ServiceFormState {
             return when (val src = item.logSource) {
@@ -114,168 +271,4 @@ data class ServiceFormState(
 sealed interface FormValidationResult {
     data class Success(val serviceItem: ServiceItem, val groupName: String) : FormValidationResult
     data class Error(val errors: Map<String, String>) : FormValidationResult
-}
-
-object ServiceFormValidator {
-
-    fun validate(
-        state: ServiceFormState,
-        existingServices: List<ServiceItem> = emptyList(),
-        currentServiceId: String? = null
-    ): FormValidationResult {
-        val errors = mutableMapOf<String, String>()
-
-        val trimmedName = state.name.trim()
-        if (trimmedName.isEmpty()) {
-            errors["name"] = "Service name cannot be empty"
-        } else {
-            val isDuplicateName = existingServices.any { service ->
-                service.id != currentServiceId && service.name.equals(trimmedName, ignoreCase = true)
-            }
-            if (isDuplicateName) {
-                errors["name"] = "A service with this name already exists"
-            }
-        }
-
-        val parsedPort = if (state.port.isNotBlank()) {
-            val portNum = state.port.trim().toIntOrNull()
-            if (portNum == null || portNum !in 1..65535) {
-                errors["port"] = "Port must be a valid number (1-65535)"
-                null
-            } else {
-                portNum
-            }
-        } else {
-            null
-        }
-
-        val logSource = when (state.logSourceType) {
-            LogSourceType.DOCKER -> {
-                val containerName = state.dockerContainerName.trim()
-                if (containerName.isEmpty()) {
-                    errors["dockerContainerName"] = "Container name cannot be empty for Docker log source"
-                    LogSource.None
-                } else {
-                    LogSource.Docker(containerName)
-                }
-            }
-            LogSourceType.DOCKER_COMPOSE -> {
-                val projectDir = state.composeProjectDir.trim()
-                val serviceName = state.composeServiceName.trim()
-                val composeFile = state.composeFileName.trim().ifEmpty { null }
-
-                if (projectDir.isEmpty()) {
-                    errors["composeProjectDir"] = "Project folder/directory cannot be empty for Docker Compose log source"
-                }
-                if (serviceName.isEmpty()) {
-                    errors["composeServiceName"] = "Service name cannot be empty for Docker Compose log source"
-                }
-
-                if (projectDir.isNotEmpty() && serviceName.isNotEmpty()) {
-                    LogSource.DockerCompose(
-                        projectDir = projectDir,
-                        serviceName = serviceName,
-                        composeFile = composeFile
-                    )
-                } else {
-                    LogSource.None
-                }
-            }
-            LogSourceType.COMMAND -> {
-                val workingDir = state.commandWorkingDir.trim()
-                val startCommand = state.commandStartScript.trim()
-                val stopCommand = state.commandStopScript.trim().ifEmpty { null }
-
-                if (workingDir.isEmpty()) {
-                    errors["commandWorkingDir"] = "Working directory cannot be empty for Directory Command log source"
-                }
-                if (startCommand.isEmpty()) {
-                    errors["commandStartScript"] = "Start command cannot be empty for Directory Command log source"
-                }
-
-                val envMap = mutableMapOf<String, String>()
-                if (state.commandEnvironment.isNotBlank()) {
-                    for (line in state.commandEnvironment.lines()) {
-                        val trimmed = line.trim()
-                        if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                            continue
-                        }
-                        val equalsIdx = trimmed.indexOf('=')
-                        if (equalsIdx == -1) {
-                            errors["commandEnvironment"] = "Invalid environment variable format: '$trimmed'. Expected KEY=VALUE"
-                            break
-                        }
-                        val key = trimmed.substring(0, equalsIdx).trim()
-                        val value = trimmed.substring(equalsIdx + 1).trim()
-                        if (key.isEmpty()) {
-                            errors["commandEnvironment"] = "Environment variable key cannot be empty in '$trimmed'"
-                            break
-                        }
-                        envMap[key] = value
-                    }
-                }
-
-                if (workingDir.isNotEmpty() && startCommand.isNotEmpty() && !errors.containsKey("commandEnvironment")) {
-                    LogSource.Command(
-                        workingDir = workingDir,
-                        startCommand = startCommand,
-                        stopCommand = stopCommand,
-                        environment = envMap
-                    )
-                } else {
-                    LogSource.None
-                }
-            }
-            LogSourceType.LOCAL_FILE -> {
-                val filePath = state.localFilePath.trim()
-                if (filePath.isEmpty()) {
-                    errors["localFilePath"] = "File path cannot be empty for Local File log source"
-                    LogSource.None
-                } else {
-                    LogSource.LocalFile(filePath)
-                }
-            }
-        }
-
-        if (errors.isNotEmpty()) {
-            return FormValidationResult.Error(errors)
-        }
-
-        val existingIds = existingServices.filter { it.id != currentServiceId }.map { it.id }.toSet()
-        val effectiveId = if (state.id.isNotBlank()) {
-            state.id.trim()
-        } else {
-            DashboardConfig.generateSlug(trimmedName, existingIds)
-        }
-
-        val effectiveHost = if (state.host.isNotBlank()) state.host.trim() else "127.0.0.1"
-        val effectiveGroup = if (state.groupName.isNotBlank()) state.groupName.trim() else "Default"
-        val effectiveOpenUrl = state.openUrl.trim().ifEmpty { null }
-        val effectiveHealthUrl = state.healthUrl.trim().ifEmpty { null }
-        val effectiveDescription = state.description.trim().ifEmpty { null }
-
-        val tagsList = state.tags.split(",")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-
-        val serviceItem = ServiceItem(
-            id = effectiveId,
-            name = trimmedName,
-            host = effectiveHost,
-            port = parsedPort,
-            openUrl = effectiveOpenUrl,
-            healthUrl = effectiveHealthUrl,
-            logSource = logSource,
-            description = effectiveDescription,
-            tags = tagsList
-        )
-
-        return FormValidationResult.Success(
-            serviceItem = serviceItem,
-            groupName = effectiveGroup
-        )
-    }
-
-    fun generateSlug(input: String, existingIds: Set<String> = emptySet()): String =
-        DashboardConfig.generateSlug(input, existingIds)
 }
