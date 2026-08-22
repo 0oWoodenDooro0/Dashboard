@@ -30,8 +30,8 @@ import website.woodendoor.dashboard.ui.components.LogConsolePane
 import website.woodendoor.dashboard.ui.components.ServiceEditDialog
 import website.woodendoor.dashboard.ui.components.ServiceListPane
 import website.woodendoor.dashboard.ui.theme.DashboardTheme
+import website.woodendoor.dashboard.model.ServiceRuntimeStatus
 import website.woodendoor.dashboard.ui.util.PlatformUtils
-import website.woodendoor.dashboard.ui.util.UiHelpers
 import website.woodendoor.dashboard.viewmodel.DashboardViewModel
 
 @Composable
@@ -71,7 +71,7 @@ fun App(
     }
 
     val summaryMetrics = remember(state.allServices, state.serviceStatuses, state.isDockerAvailable) {
-        UiHelpers.calculateSummaryMetrics(
+        ServiceRuntimeStatus.calculateSummaryMetrics(
             services = state.allServices,
             statuses = state.serviceStatuses,
             isDockerAvailable = state.isDockerAvailable
