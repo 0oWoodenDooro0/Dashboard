@@ -12,7 +12,7 @@ import website.woodendoor.dashboard.ui.util.FormValidationResult
 import website.woodendoor.dashboard.ui.util.LogSourceType
 import website.woodendoor.dashboard.ui.util.ServiceFormState
 
-class ServiceFormValidatorTest {
+class ServiceFormStateTest {
 
     @Test
     fun `default ServiceFormState uses COMMAND log source type`() {
