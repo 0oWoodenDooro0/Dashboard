@@ -27,7 +27,7 @@ compose.desktop {
                 else -> targetFormats(TargetFormat.Deb, TargetFormat.AppImage)
             }
             packageName = "website.woodendoor.dashboard"
-            packageVersion = "1.0.0"
+            packageVersion = "1.1.0"
             description = "WoodenDoor Dashboard - Service & Log Observability"
             vendor = "WoodenDoor"
             linux {
